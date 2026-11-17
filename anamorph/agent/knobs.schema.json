@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "anamorph agent knobs",
+  "description": "The ONLY numeric/categorical surface the agent may set. Mirrors opt.ilt.Knobs.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "iters":        {"type": "integer", "minimum": 1, "maximum": 5000},
+    "lr":           {"type": "number", "exclusiveMinimum": 0, "maximum": 2.0},
+    "mask":         {"enum": ["pixel", "levelset"]},
+    "beta":         {"type": "number", "minimum": 0.5, "maximum": 50},
+    "w_l2":         {"type": "number", "minimum": 0, "maximum": 100},
+    "w_pvb":        {"type": "number", "minimum": 0, "maximum": 100},
+    "lambda_pfail": {"type": "number", "minimum": 0, "maximum": 100},
+    "pfail_floor":  {"type": "number", "minimum": 1e-20, "maximum": 1e-3},
+    "w_mrc":        {"type": "number", "minimum": 0, "maximum": 1000},
+    "w_nils":       {"type": "number", "minimum": 0, "maximum": 100},
+    "w_bin":        {"type": "number", "minimum": 0, "maximum": 100},
+    "reinit_every": {"type": "integer", "minimum": 0, "maximum": 1000},
+    "ste_frac":     {"type": "number", "minimum": 0, "maximum": 1},
+    "tail":         {"enum": ["saddlepoint", "gaussian"]},
+    "socs_energy":  {"type": "number", "minimum": 0.9, "maximum": 1.0},
+    "seed":         {"type": "integer", "minimum": 0}
+  }
+}

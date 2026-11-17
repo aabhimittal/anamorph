@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anamorph"
+version = "0.1.0"
+description = "Stochastic-aware, High-NA-anamorphic differentiable ILT engine"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = ["torch>=2.2", "numpy>=1.26", "scipy>=1.11", "pyyaml>=6", "jsonschema>=4", "gdstk>=0.9", "pillow>=10"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["anamorph*"]
+
+[tool.setuptools.package-data]
+anamorph = ["agent/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
