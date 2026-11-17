@@ -79,7 +79,28 @@ them with the commands above.
    that binarization then erases. On L/S, the soft mask reached log10 P ≈ −9.4, but its
    binarized version only reached −7.9. A straight-through binarized phase, with a
    warm-restarted step size, closes the gap.
-4. **On thin-mask optics, anamorphism is nearly invisible.** In wafer coordinates, (4×, 8×)
+4. **Tier-B v0** (`tierb --iters 100 --lambda 1.0`, single seed, CPU). These are fixed-λ
+   points, not equal-EPE Pareto fronts.
+
+   | clip | config | L2 | PVB | EPE (3 nm) | MRC viol. | worst log10 P_fail |
+   |---|---|---|---|---|---|---|
+   | L/S p24 | EPE-only | 0 | 768 | 0 | 0 | −7.66 (break) |
+   | L/S p24 | stochastic | 462 | 216 | 0 | 179 | −9.21 (bridge) |
+   | T2T p24 g16 | EPE-only | 128 | 352 | 0 | 96 | −5.27 (break) |
+   | T2T p24 g16 | stochastic | 1040 | 216 | 8 | 0 | −14.77 (break) |
+   | via p32 | EPE-only | 768 | 768 | 0 | 0 | −11.62 (bridge) |
+   | via p32 | stochastic | 752 | 748 | 0 | 304 | −12.88 (bridge) |
+
+   At the card dose, every P_fail lands in the MC **model-only** regime (no failures in
+   20k trials). That agrees with the model but does not confirm it. The quantitative
+   model-vs-MC agreement comes from the low-dose cases in `tests/test_stochastic.py`. The
+   NILS baseline (`w_nils=0.5`) barely moved away from EPE-only, so it still needs its
+   equal-budget tuning before any comparison is fair.
+
+   Tier-A on all 10 ICCAD-13 cases, with the contest kernels, 4 nm optimization grid,
+   80 iterations and evaluation at 1 nm: mean L2 31.8k, mean PVB 44.3k, 1–3 min per case
+   on CPU.
+5. **On thin-mask optics, anamorphism is nearly invisible.** In wafer coordinates, (4×, 8×)
    only changes the radiometric factor, by less than 1e-2 in intensity. The real anamorphic
    effects live in reticle-space MRC (a 32 nm rule becomes 8 nm in x and 4 nm in y) and in
    M3D shadowing. The engine models MRC; M3D still needs a rigorous reference.
