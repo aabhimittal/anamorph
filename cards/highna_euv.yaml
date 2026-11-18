@@ -1,0 +1,24 @@
+# Illustrative High-NA EUV card. Values are generic textbook/public-literature numbers,
+# NOT calibrated to any scanner, mask or resist. Absolute P_fail is model-relative.
+name: highna-euv-0.55-illustrative
+wavelength_nm: 13.5
+na: 0.55
+immersion_index: 1.0
+obscuration: 0.2          # central obscuration as a fraction of NA (illustrative)
+magnification: [4, 8]     # anamorphic (x, y) reticle:wafer
+vector: true
+absorber_amplitude: 0.15  # |r_abs/r_ml|, binary-like absorber
+absorber_phase_deg: 0.0
+pixel_nm: 1.0
+source: {shape: dipole, axis: x, sigma_in: 0.4, sigma_out: 0.9, opening_deg: 90, step: 0.1}
+resist:
+  threshold: 0.30
+  steepness: 30
+  diffusion_nm: 3.0
+  dose_mj_cm2: 40
+  absorption: 0.2
+  quantum_yield: 2.0
+pw_dose: 0.03
+pw_focus_nm: 20
+mrc_width_reticle_nm: 32   # -> 8 nm (x) / 4 nm (y) at the wafer
+mrc_space_reticle_nm: 32

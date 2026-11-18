@@ -1,0 +1,15 @@
+# Approximate ICCAD-13 / OpenILT-style ArF immersion card for Tier-A smoke runs.
+# For exact parity, load the contest kernels with anamorph.bench.iccad13 instead.
+name: duv-iccad13-approx
+wavelength_nm: 193.0
+na: 1.35
+immersion_index: 1.44
+obscuration: 0.0
+magnification: [4, 4]
+vector: false
+absorber_amplitude: 0.0
+pixel_nm: 4.0
+source: {shape: annular, sigma_in: 0.6, sigma_out: 0.9, step: 0.05}
+resist: {threshold: 0.225, steepness: 50, diffusion_nm: 0.0, dose_mj_cm2: 30, absorption: 0.3, quantum_yield: 2.0}
+pw_dose: 0.02
+pw_focus_nm: 25
