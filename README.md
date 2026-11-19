@@ -59,6 +59,9 @@ git clone --depth 1 https://github.com/OpenOPC/OpenILT
 python -m anamorph tiera --openilt OpenILT --cases 1,2,3
 # M0 parity: OpenILT's SimpleILT protocol + its approximate gradient, vs its README table
 python -m anamorph tiera --openilt OpenILT --protocol simpleilt --gradient openilt
+# M0 parity: LithoBench's CurvMulti protocol + its 24-kernel hand gradient (~8 min/case on CPU)
+git clone https://github.com/shelljane/lithobench
+python -m anamorph tiera --openilt lithobench --protocol curvmulti --gradient openilt-exact
 ```
 
 ## Findings so far
@@ -136,12 +139,50 @@ them with the commands above.
    OpenILT's code also reproduces the masks it ships in `tmp/MOSAIC_test*.png`, so the
    README table most likely comes from an earlier code version or a GPU run. That cannot
    be checked from the repository. CPU-only; OpenILT's numbers were measured on an RTX 3090.
+7. **M0 parity, LithoBench: the published CurvMulti numbers reproduce, and so does
+   anamorph.** We ran LithoBench's multi-level CurvMulti (256/512/1024 with 200/100/100 SGD
+   steps, curvature weight 2e2, its all-kernel hand-written gradient) on all 10 ICCAD-13
+   cases. Both runs used the same evaluation (nearest upsampling to 2048², the ICCAD-13
+   EPE rule). Every case is within **0.03%** of the per-case numbers in
+   `pyilt/curvmulti.py` at commit `9c74e82`:
+
+   | case | published L2 / PVB / EPE | LithoBench @9c74e82 | anamorph | final mask px diff | L2 vs pub | PVB vs pub |
+   |---|---|---|---|---|---|---|
+   | 1 | 39112 / 48831 / 3 | 39112 / 48831 / 3 | 39112 / 48831 / 3 | 0 | +0.00% | +0.00% |
+   | 2 | 31082 / 39102 / 0 | 31082 / 39102 / 0 | 31082 / 39100 / 0 | 1 | +0.00% | −0.01% |
+   | 3 | 63569 / 76183 / 17 | 63561 / 76204 / 17 | 63569 / 76183 / 17 | 7 | +0.00% | +0.00% |
+   | 4 | 8844 / 23986 / 0 | 8844 / 23986 / 0 | 8844 / 23986 / 0 | 0 | +0.00% | +0.00% |
+   | 5 | 28721 / 53856 / 0 | 28721 / 53855 / 0 | 28721 / 53856 / 0 | 0 | +0.00% | +0.00% |
+   | 6 | 29981 / 49084 / 0 | 29981 / 49084 / 0 | 29981 / 49084 / 0 | 0 | +0.00% | +0.00% |
+   | 7 | 14813 / 42364 / 0 | 14812 / 42364 / 0 | 14813 / 42364 / 0 | 0 | +0.00% | +0.00% |
+   | 8 | 10937 / 21210 / 0 | 10938 / 21209 / 0 | 10938 / 21209 / 0 | 0 | +0.01% | −0.00% |
+   | 9 | 34791 / 62161 / 0 | 34791 / 62161 / 0 | 34791 / 62161 / 0 | 0 | +0.00% | +0.00% |
+   | 10 | 7558 / 17393 / 0 | 7556 / 17392 / 0 | 7556 / 17390 / 0 | 32 | −0.03% | −0.02% |
+   | mean | 26941 / 43417 / 2.0 | 26940 / 43419 / 2.0 | 26941 / 43416 / 2.0 | | | |
+
+   At the intermediate levels, anamorph's masks differ from LithoBench's by 0–8 pixels,
+   and L2/PVB differ by at most 65 px.
+
+   LithoBench's hand-written gradient is not the true adjoint:
+   - it applies K(f) where the adjoint needs K(−f);
+   - on the contest kernels it is 9.5% off the autograd gradient.
+
+   Reproducing the table therefore needs `--gradient openilt-exact`; `--gradient exact` is
+   the correct gradient but gives a different trajectory.
+
+   **Not checked:**
+   - **LithoBench dataset litho labels** (aerial/resist `.png` vs our forward model): the
+     14.7 GB Google Drive archive was over its download quota.
+   - **LithoBench's SimpleILT comment numbers**: they come from `parallel()`, which needs
+     `config/simpleilt512.txt`, and that file is not in the repository.
+   - **MaskOpt**: there is no public data or code link, and its tables contain only
+     deep-learning models.
 
 ## Milestones (honest status)
 
 | | Scope | Status |
 |---|---|---|
-| M0 | OpenILT/LithoBench reproduction, deterministic CI | **OpenILT: done against its code, not against its README table** (finding 6). We match OpenILT @dabb97c within 3e-5 on all 10 cases, but the README table is +5.9% / +7.5% off even for OpenILT's own code, so a 5% gate against that table fails for both. LithoBench is not yet attempted. Shot counts use a greedy cover, not adabox, so they are not comparable |
+| M0 | OpenILT/LithoBench reproduction, deterministic CI | **OpenILT: done against its code, not against its README table** (finding 6). We match OpenILT @dabb97c within 3e-5 on all 10 cases, but the README table is +5.9% / +7.5% off even for OpenILT's own code, so a 5% gate against that table fails for both. **LithoBench CurvMulti: done**, within 0.03% of its published numbers on all 10 cases (finding 7). Dataset-label parity and MaskOpt are blocked (no download / no public release). Shot counts use a greedy cover, not adabox, so they are not comparable |
 | M1 | Anamorphic Abbe/SOCS + GRF P_fail + MC validation | **Done** on CPU, including vector, obscuration, the saddlepoint tail and the MC gate |
 | M2 | Learned M3D vs rigorous reference; curvilinear MRC; EUV clips v0 | Operator, fitting loop, MRC and clips v0 are in. **No rigorous RCWA/FDTD reference yet**, so the M3D kernels stay at zero |
 | M3 | Multi-GPU full chip, agentic layer, paper | Tiling and healing run on a single device. The agent boundary and random-search baseline are in. **No NCCL and no LLM driver** |
