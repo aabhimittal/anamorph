@@ -57,10 +57,13 @@ def sample_path(points, step: float = 0.5, dtype=torch.float64):
 
 
 def _bilinear(maps: torch.Tensor, xy: torch.Tensor) -> torch.Tensor:
-    """maps (C, H, W), xy (N, 2) pixel coords -> (C, N)."""
+    """maps (C, H, W), xy (N, 2) pixel coords -> (C, N). Periodic, like the FFT optics:
+    a point between the last pixel and the edge interpolates toward pixel 0, not toward zero."""
     h, w = maps.shape[-2:]
-    grid = torch.stack([2 * xy[:, 0] / (w - 1) - 1, 2 * xy[:, 1] / (h - 1) - 1], -1).to(maps.dtype)
-    return F.grid_sample(maps[None], grid[None, None], mode="bilinear", align_corners=True)[0, :, 0]
+    m = torch.cat([maps, maps[..., :1, :]], -2)
+    m = torch.cat([m, m[..., :1]], -1)
+    grid = torch.stack([2 * (xy[:, 0] % w) / w - 1, 2 * (xy[:, 1] % h) / h - 1], -1).to(maps.dtype)
+    return F.grid_sample(m[None], grid[None, None], mode="bilinear", align_corners=True)[0, :, 0]
 
 
 def log_psi(a: torch.Tensor) -> torch.Tensor:

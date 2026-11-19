@@ -59,6 +59,18 @@ def test_tails_agree_at_high_dose_near_mean():
     assert abs(a - math.log(0.02275)) < 0.01 and abs(a - b) < 0.05
 
 
+@pytest.mark.parametrize("tail", ["gaussian", "saddlepoint"])
+def test_pfail_is_translation_invariant_across_the_tile_edge(tail):
+    """Periodic optics: shifting image and gauge together must not change P_fail, including
+    a gauge that straddles the last-pixel/first-pixel boundary (x = N - 0.5)."""
+    card, i, model = _setup(dose=10, thr=0.2)
+    g = Gauge([(55.5, 20), (55.5, 44)], -1, "bridge")
+    shifted = Gauge([(N - 0.5, 20), (N - 0.5, 44)], -1, "bridge")
+    a = log_pfail(model, i, [g], tail)
+    b = log_pfail(model, torch.roll(i, N - 1 - 55, -1), [shifted], tail)
+    assert torch.allclose(a, b, rtol=1e-6), (a, b)
+
+
 def test_pfail_gradient_is_finite():
     card, i, model = _setup(dose=10, thr=0.2)
     i = i.clone().requires_grad_(True)
