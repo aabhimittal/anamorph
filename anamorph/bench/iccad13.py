@@ -6,8 +6,9 @@ Conventions reproduced from OpenILT (MIT): 2048x2048 canvas at 1 nm, clip center
 dose 1.02, min = defocus kernels at dose 0.98, where dose scales the MASK amplitude.
 The 35x35 frequency kernels have df = 1/2048 nm^-1, so they apply unchanged to a
 (2048/s)^2 grid at s nm pixels: optimize coarse, evaluate at 1 nm (nearest upsample).
-Known difference: OpenILT rasterizes with cv2.fillPoly (inclusive of the far edge);
-we rasterize pixel centers, so targets differ by up to one pixel row per edge.
+Rasterization: OpenILT uses cv2.fillPoly, which fills every integer grid point of the
+CLOSED polygon (a w-wide RECT covers w+1 pixels). glp_target(inclusive=True) reproduces
+that and is what Tier-A parity uses; the default pixel-center rule is the geometric one.
 """
 from __future__ import annotations
 
@@ -37,15 +38,18 @@ def read_glp(path) -> list[np.ndarray]:
     return polys
 
 
-def glp_target(path, size: int = 2048, pixel_nm: float = 1.0) -> torch.Tensor:
+def glp_target(path, size: int = 2048, pixel_nm: float = 1.0, inclusive: bool = False) -> torch.Tensor:
     import gdstk
     polys = read_glp(path)
     lo = np.min([p.min(0) for p in polys], 0)
     hi = np.max([p.max(0) for p in polys], 0)
     shift = (size * pixel_nm - (hi - lo)) // 2 - lo
-    c = (np.arange(size) + 0.5) * pixel_nm
+    polys = [gdstk.Polygon(p + shift) for p in polys]
+    if inclusive:  # closed set on the integer grid: a 0.25 miter offset (Manhattan input) keeps edge points inside
+        polys = gdstk.offset(polys, 0.25 * pixel_nm, join="miter")
+    c = (np.arange(size) + (0.0 if inclusive else 0.5)) * pixel_nm
     gx, gy = np.meshgrid(c, c)
-    inside = gdstk.inside(np.stack([gx.ravel(), gy.ravel()], 1), [p + shift for p in polys])
+    inside = gdstk.inside(np.stack([gx.ravel(), gy.ravel()], 1), polys)
     return torch.tensor(np.asarray(inside, float).reshape(size, size))
 
 
@@ -68,17 +72,83 @@ def load_openilt_kernels(kernel_dir, defocus: bool = False):
     return k.permute(2, 0, 1), s
 
 
-class ICCAD13Litho:
-    """Drop-in for opt.ilt.Litho with the contest kernels and corner conventions."""
+# OpenILT README "SimpleILT" table (commit dabb97c, 2048x2048 evaluation): case -> (L2, PVBand, EPE)
+PUBLISHED_SIMPLEILT = {1: (43408, 52281, 3), 2: (35326, 41865, 2), 3: (75428, 78805, 43), 4: (13649, 22112, 2),
+                       5: (37330, 54977, 2), 6: (35711, 51036, 0), 7: (29566, 44576, 0), 8: (14327, 20727, 0),
+                       9: (45347, 64063, 0), 10: (8404, 16685, 0)}
 
-    def __init__(self, kernel_dir, shape, card: Card = ICCAD13_CARD):
-        self.card, self.m3d = card, None
+
+def _combo_kernel(kernel_dir, name: str, shape) -> torch.Tensor:
+    k = torch.load(Path(kernel_dir) / "kernels" / f"{name}.pt", map_location="cpu", weights_only=True)
+    return SOCS.from_spatial_kernels(k.permute(2, 0, 1), torch.ones(1), shape).kernels[0]
+
+
+class _OpenILTGrad(torch.autograd.Function):
+    """OpenILT pylitho/simple.py: exact 24-kernel forward, but the backward pass is the
+    gradient of a single-kernel coherent image built from the 'combo' kernel K and its
+    conjugate-transpose K' (no outer dose factor), copied exactly for protocol parity."""
+
+    @staticmethod
+    def forward(ctx, m, dose, socs, kc, kct):
+        ctx.save_for_backward(m)
+        ctx.args = (dose, kc, kct)
+        return socs(m.to(torch.complex64) * dose)
+
+    @staticmethod
+    def backward(ctx, g):
+        (m,), (dose, kc, kct) = ctx.saved_tensors, ctx.args
+        f = lambda x, k: torch.fft.ifft2(torch.fft.fft2(x) * k)
+        dm, gc = m.to(torch.complex64) * dose, g.to(torch.complex64)
+        return (f(f(dm, kct) * gc, kc) + f(f(dm, kc) * gc, kct)).real.to(m.dtype), None, None, None, None
+
+
+class ICCAD13Litho:
+    """Drop-in for opt.ilt.Litho with the contest kernels and corner conventions.
+
+    gradient="exact" differentiates the true SOCS model; "openilt" reproduces OpenILT's
+    approximate combo-kernel backward (only for reproducing their published runs).
+    """
+
+    def __init__(self, kernel_dir, shape, card: Card = ICCAD13_CARD, gradient: str = "exact"):
+        self.card, self.m3d, self.gradient = card, None, gradient
         self.nom = SOCS.from_spatial_kernels(*load_openilt_kernels(kernel_dir), shape)
         self.dfc = SOCS.from_spatial_kernels(*load_openilt_kernels(kernel_dir, True), shape)
         self.resist = GRFModel(card, shape)
+        if gradient == "openilt":
+            self.combo = {id(self.nom): (_combo_kernel(kernel_dir, "combo_focus", shape), _combo_kernel(kernel_dir, "combo_ct_focus", shape)),
+                          id(self.dfc): (_combo_kernel(kernel_dir, "combo_defocus", shape), _combo_kernel(kernel_dir, "combo_ct_defocus", shape))}
+        elif gradient != "exact":
+            raise ValueError(gradient)
+
+    def _image(self, socs, m, dose):
+        if self.gradient == "exact":
+            return socs(m.to(torch.complex64) * dose).to(torch.float64)
+        return _OpenILTGrad.apply(m, dose, socs, *self.combo[id(socs)]).to(torch.float64)
 
     def aerials(self, m):
-        m = m.to(torch.complex64)
         d = self.card.pw_dose
-        return (self.nom(m).to(torch.float64), self.nom(m * (1 + d)).to(torch.float64),
-                self.dfc(m * (1 - d)).to(torch.float64))
+        return self._image(self.nom, m, 1.0), self._image(self.nom, m, 1 + d), self._image(self.dfc, m, 1 - d)
+
+
+def simple_ilt(target: torch.Tensor, litho, iters: int = 20, lr: float = 0.5, steepness: float = 4.0,
+               offset: int = 512, size: int = 1024) -> torch.Tensor:
+    """OpenILT SimpleILT protocol (config/simpleilt2048.txt): SGD on pixel params
+    initialized to 2t-1, only the central window optimized, loss = sum of squared
+    errors at the nominal/max/min corners, mask of the lowest-loss iterate returned."""
+    r = litho.card.resist
+    filt = torch.zeros_like(target)
+    filt[offset:offset + size, offset:offset + size] = 1
+    backup = 2 * target - 1
+    params = backup.clone().requires_grad_(True)
+    opt = torch.optim.SGD([params], lr=lr)
+    best = (float("inf"), None)
+    for _ in range(iters):
+        mask = torch.sigmoid(steepness * params) * filt + torch.sigmoid(steepness * backup) * (1 - filt)
+        z = [torch.sigmoid(r.steepness * (a - r.threshold)) for a in litho.aerials(mask)]
+        loss = sum(((zi - target) ** 2).sum() for zi in z)
+        if loss.item() < best[0]:
+            best = (loss.item(), mask.detach().clone())
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    return best[1]

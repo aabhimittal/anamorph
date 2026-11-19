@@ -2,6 +2,7 @@
 
   python -m anamorph tierb --clips ls,t2t,via --lambda 1.0 --iters 100
   python -m anamorph tiera --openilt path/to/OpenILT --cases 1,2,3
+  python -m anamorph tiera --openilt path/to/OpenILT --protocol simpleilt --gradient openilt
   python -m anamorph validate --clip ls --dose 10 --threshold 0.2 --trials 20000
 """
 from __future__ import annotations
@@ -58,17 +59,29 @@ def tierb(a):
 
 
 def tiera(a):
-    from anamorph.bench.iccad13 import ICCAD13_CARD, ICCAD13Litho, glp_target
+    """--protocol simpleilt reproduces OpenILT's published SimpleILT run (2048^2, 20 SGD steps,
+    their combo-kernel gradient) and reports the deviation from its README table."""
+    import time
+    from anamorph.bench.iccad13 import ICCAD13_CARD, PUBLISHED_SIMPLEILT, ICCAD13Litho, glp_target, simple_ilt
     kdir, bdir = f"{a.openilt}/kernel", f"{a.openilt}/benchmark/ICCAD2013"
-    n = 2048 // a.scale
-    full, coarse = ICCAD13Litho(kdir, (2048, 2048)), ICCAD13Litho(kdir, (n, n))
+    full = ICCAD13Litho(kdir, (2048, 2048), gradient=a.gradient)
+    if a.protocol == "anamorph":
+        n = 2048 // a.scale
+        coarse = ICCAD13Litho(kdir, (n, n), gradient=a.gradient)
     for case in a.cases.split(","):
-        t = glp_target(f"{bdir}/M1_test{case}.glp")
-        tc = F.avg_pool2d(t[None, None], a.scale)[0, 0].round()
-        r = optimize(tc, ICCAD13_CARD, Knobs(iters=a.iters, lr=a.lr), litho=coarse)
-        m = F.interpolate(r["mask"][None, None], scale_factor=a.scale, mode="nearest")[0, 0]
+        t = glp_target(f"{bdir}/M1_test{case}.glp", inclusive=True)  # cv2.fillPoly-identical target
+        t0 = time.time()
+        if a.protocol == "simpleilt":
+            m = (simple_ilt(t.float(), full) >= 0.5).double()
+        else:
+            tc = F.avg_pool2d(t[None, None], a.scale)[0, 0].round()
+            r = optimize(tc, ICCAD13_CARD, Knobs(iters=a.iters, lr=a.lr), litho=coarse)
+            m = F.interpolate(r["mask"][None, None], scale_factor=a.scale, mode="nearest")[0, 0]
         ev = evaluate(m, t, ICCAD13_CARD, full)
-        print(json.dumps({"case": int(case), "seconds": round(r["seconds"], 1)} | ev), flush=True)
+        row = {"case": int(case), "seconds": round(time.time() - t0, 1)} | ev
+        l2, pvb, epe = PUBLISHED_SIMPLEILT[int(case)]
+        row |= {"l2_vs_pub_pct": round(100 * (ev["l2"] / l2 - 1), 2), "pvb_vs_pub_pct": round(100 * (ev["pvb"] / pvb - 1), 2)}
+        print(json.dumps(row), flush=True)
 
 
 def validate(a):
@@ -104,6 +117,8 @@ def main(argv=None):
     a_.add_argument("--scale", type=int, default=4)
     a_.add_argument("--iters", type=int, default=80)
     a_.add_argument("--lr", type=float, default=0.1)
+    a_.add_argument("--protocol", choices=["anamorph", "simpleilt"], default="anamorph")
+    a_.add_argument("--gradient", choices=["exact", "openilt"], default="exact")
     v = sub.add_parser("validate")
     v.add_argument("--card", default="cards/highna_euv.yaml")
     v.add_argument("--clip", default="ls")
