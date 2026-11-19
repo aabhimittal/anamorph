@@ -41,6 +41,26 @@ loss = L2 + PVB + λ·log10(Σ_g P_fail) + MRC + binarization  (− NILS for the
 | `bench/` | EUV clip benchmark v0 (L/S, tip-to-tip, vias with gauges), ICCAD-13 `.glp` + contest-kernel adapter, LithoBench/MaskOpt `.npy/.png` loader |
 | `io/gds.py` | GDS/OASIS window rasterization in, rectangle-cover mask out (wafer or reticle coordinates) |
 
+## Demo
+
+[**anamorph playground**](https://aabhimittal.github.io/anamorph/) is a static page in `demo/`.
+Paint a mask on the L/S, tip-to-tip or via clip and watch the High-NA aerial image and the
+printed contour update live in the browser:
+- **Forward model:** `demo/litho.js` is a port of the SOCS + resist path using the engine's 24
+  strongest kernels. On load, the page checks itself against engine values exported by
+  `demo/build_data.py`.
+- **From the engine:** the ILT masks (edge-placement vs stochastic-aware), their P_fail,
+  PV band and MRC, and the Gaussian vs saddlepoint vs Monte-Carlo tail sweep.
+
+```bash
+python demo/build_data.py                  # regenerate demo/data.json (~2 min CPU)
+node demo/check.js                         # browser model vs engine, max |err| ~1e-6
+python -m http.server -d demo 8000         # open http://localhost:8000
+```
+
+`.github/workflows/pages.yml` deploys it on every push to `main` that touches `demo/`.
+Pages must be enabled once under *Settings → Pages → Source: GitHub Actions*.
+
 ## Quickstart
 
 ```bash
@@ -90,11 +110,17 @@ them with the commands above.
    | clip | config | L2 | PVB | EPE (3 nm) | MRC viol. | worst log10 P_fail |
    |---|---|---|---|---|---|---|
    | L/S p24 | EPE-only | 0 | 768 | 0 | 0 | −7.66 (break) |
-   | L/S p24 | stochastic | 462 | 216 | 0 | 179 | −9.21 (bridge) |
+   | L/S p24 | stochastic | 512 | 296 | 0 | 192 | −9.16 (bridge) |
    | T2T p24 g16 | EPE-only | 128 | 352 | 0 | 96 | −5.27 (break) |
    | T2T p24 g16 | stochastic | 1040 | 216 | 8 | 0 | −14.77 (break) |
    | via p32 | EPE-only | 768 | 768 | 0 | 0 | −11.62 (bridge) |
-   | via p32 | stochastic | 752 | 748 | 0 | 304 | −12.88 (bridge) |
+   | via p32 | stochastic | 704 | 768 | 0 | 352 | −13.02 (bridge) |
+
+   The two stochastic rows changed after a bug fix. The Gaussian moment maps were sampled
+   with zero padding, not periodically. A bridge gauge whose centerline falls between the
+   last pixel and the tile edge (x = N − 0.5, on L/S and vias) therefore saw a wrong
+   P_fail, and the optimizer pushed on it. `test_pfail_is_translation_invariant_across_the_tile_edge`
+   now guards this. The saddlepoint lattice and the MC checker were already periodic.
 
    At the card dose, every P_fail lands in the MC **model-only** regime (no failures in
    20k trials). That agrees with the model but does not confirm it. The quantitative
