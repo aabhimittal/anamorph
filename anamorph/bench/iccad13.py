@@ -38,9 +38,10 @@ def read_glp(path) -> list[np.ndarray]:
     return polys
 
 
-def glp_target(path, size: int = 2048, pixel_nm: float = 1.0, inclusive: bool = False) -> torch.Tensor:
+def glp_target(path, size: int = 2048, pixel_nm: float = 1.0, inclusive: bool = False, down: int = 1) -> torch.Tensor:
+    """down: integer coordinate downsampling before rasterizing (OpenILT glp.Design(down=...))."""
     import gdstk
-    polys = read_glp(path)
+    polys = [p // down for p in read_glp(path)]
     lo = np.min([p.min(0) for p in polys], 0)
     hi = np.max([p.max(0) for p in polys], 0)
     shift = (size * pixel_nm - (hi - lo)) // 2 - lo
@@ -77,36 +78,47 @@ PUBLISHED_SIMPLEILT = {1: (43408, 52281, 3), 2: (35326, 41865, 2), 3: (75428, 78
                        5: (37330, 54977, 2), 6: (35711, 51036, 0), 7: (29566, 44576, 0), 8: (14327, 20727, 0),
                        9: (45347, 64063, 0), 10: (8404, 16685, 0)}
 
+# LithoBench pyilt/curvmulti.py result comment (commit 9c74e82), final "High" level: case -> (L2, PVBand, EPE)
+PUBLISHED_CURVMULTI = {1: (39112, 48831, 3), 2: (31082, 39102, 0), 3: (63569, 76183, 17), 4: (8844, 23986, 0),
+                       5: (28721, 53856, 0), 6: (29981, 49084, 0), 7: (14813, 42364, 0), 8: (10937, 21210, 0),
+                       9: (34791, 62161, 0), 10: (7558, 17393, 0)}
 
-def _combo_kernel(kernel_dir, name: str, shape) -> torch.Tensor:
-    k = torch.load(Path(kernel_dir) / "kernels" / f"{name}.pt", map_location="cpu", weights_only=True)
-    return SOCS.from_spatial_kernels(k.permute(2, 0, 1), torch.ones(1), shape).kernels[0]
+
+def _raw_kernels(kernel_dir, name: str, shape) -> torch.Tensor:
+    """(K, H, W) frequency kernels placed on the FFT grid, WITHOUT the sqrt(scale) factor."""
+    k = torch.load(Path(kernel_dir) / "kernels" / f"{name}.pt", map_location="cpu", weights_only=True).permute(2, 0, 1)
+    return SOCS.from_spatial_kernels(k, torch.ones(k.shape[0]), shape).kernels
 
 
-class _OpenILTGrad(torch.autograd.Function):
-    """OpenILT pylitho/simple.py: exact 24-kernel forward, but the backward pass is the
-    gradient of a single-kernel coherent image built from the 'combo' kernel K and its
-    conjugate-transpose K' (no outer dose factor), copied exactly for protocol parity."""
+class _HandGrad(torch.autograd.Function):
+    """OpenILT/LithoBench hand-written backward, copied exactly for protocol parity:
+    grad = Re sum_k s_k [K_k (g . (K'_k dm)) + K'_k (g . (K_k dm))], dm = dose * m, with K' the
+    stored 'CT' kernels and no outer dose factor. pylitho/simple.py uses one 'combo' kernel
+    (s = 1); pylitho/exact.py uses all 24. Neither is the true adjoint (that needs K(-f)
+    where K(f) is used), so these modes only exist to reproduce published runs."""
 
     @staticmethod
-    def forward(ctx, m, dose, socs, kc, kct):
+    def forward(ctx, m, dose, socs, k, kct, sc):
         ctx.save_for_backward(m)
-        ctx.args = (dose, kc, kct)
+        ctx.args = (dose, k, kct, sc)
         return socs(m.to(torch.complex64) * dose)
 
     @staticmethod
     def backward(ctx, g):
-        (m,), (dose, kc, kct) = ctx.saved_tensors, ctx.args
-        f = lambda x, k: torch.fft.ifft2(torch.fft.fft2(x) * k)
-        dm, gc = m.to(torch.complex64) * dose, g.to(torch.complex64)
-        return (f(f(dm, kct) * gc, kc) + f(f(dm, kc) * gc, kct)).real.to(m.dtype), None, None, None, None
+        (m,), (dose, k, kct, sc) = ctx.saved_tensors, ctx.args
+        f = lambda x, kk: torch.fft.ifft2(torch.fft.fft2(x) * kk)
+        dm, gc = (m.to(torch.complex64) * dose).unsqueeze(-3), g.to(torch.complex64).unsqueeze(-3)
+        per_k = f(f(dm, kct) * gc, k) + f(f(dm, k) * gc, kct)
+        return (sc[:, None, None] * per_k.real).sum(-3).to(m.dtype), None, None, None, None, None
 
 
 class ICCAD13Litho:
     """Drop-in for opt.ilt.Litho with the contest kernels and corner conventions.
 
-    gradient="exact" differentiates the true SOCS model; "openilt" reproduces OpenILT's
-    approximate combo-kernel backward (only for reproducing their published runs).
+    gradient="exact"          true SOCS autograd (use this for real work);
+    "openilt"                 OpenILT/LithoBench pylitho/simple.py combo-kernel backward;
+    "openilt-exact"           OpenILT/LithoBench pylitho/exact.py 24-kernel hand backward.
+    The two compat modes only reproduce published runs.
     """
 
     def __init__(self, kernel_dir, shape, card: Card = ICCAD13_CARD, gradient: str = "exact"):
@@ -114,16 +126,21 @@ class ICCAD13Litho:
         self.nom = SOCS.from_spatial_kernels(*load_openilt_kernels(kernel_dir), shape)
         self.dfc = SOCS.from_spatial_kernels(*load_openilt_kernels(kernel_dir, True), shape)
         self.resist = GRFModel(card, shape)
-        if gradient == "openilt":
-            self.combo = {id(self.nom): (_combo_kernel(kernel_dir, "combo_focus", shape), _combo_kernel(kernel_dir, "combo_ct_focus", shape)),
-                          id(self.dfc): (_combo_kernel(kernel_dir, "combo_defocus", shape), _combo_kernel(kernel_dir, "combo_ct_defocus", shape))}
-        elif gradient != "exact":
+        if gradient == "exact":
+            return
+        if gradient not in ("openilt", "openilt-exact"):
             raise ValueError(gradient)
+        pre = "combo_" if gradient == "openilt" else ""
+        self.hand = {}
+        for socs, focus in ((self.nom, "focus"), (self.dfc, "defocus")):
+            k, kct = _raw_kernels(kernel_dir, f"{pre}{focus}", shape), _raw_kernels(kernel_dir, f"{pre}ct_{focus}", shape)
+            sc = torch.ones(1) if pre else load_openilt_kernels(kernel_dir, focus == "defocus")[1].float()
+            self.hand[id(socs)] = (k, kct, sc)
 
     def _image(self, socs, m, dose):
         if self.gradient == "exact":
             return socs(m.to(torch.complex64) * dose).to(torch.float64)
-        return _OpenILTGrad.apply(m, dose, socs, *self.combo[id(socs)]).to(torch.float64)
+        return _HandGrad.apply(m, dose, socs, *self.hand[id(socs)]).to(torch.float64)
 
     def aerials(self, m):
         d = self.card.pw_dose
@@ -152,3 +169,46 @@ def simple_ilt(target: torch.Tensor, litho, iters: int = 20, lr: float = 0.5, st
         loss.backward()
         opt.step()
     return best[1]
+
+
+_CURV = torch.tensor([[-1 / 16, 5 / 16, -1 / 16], [5 / 16, -1.0, 5 / 16], [-1 / 16, 5 / 16, -1 / 16]])
+
+
+def curv_ilt(target, params, litho, iters: int, lr: float = 0.5, steepness: float = 4.0, offset: int = 0,
+             size: int | None = None, w_curv: float = 2e2):
+    """LithoBench pyilt/curvmulti.py single level: mask = sigmoid(s * (avgpool7(params) - 0.5)) inside
+    the window (0 outside); loss = |Z_max - t|^2 + |Z_max - Z_min|^2 + w_curv * |curv(Z_nom)|^2 (sums);
+    SGD; returns (params, binarized mask) of the lowest-loss iterate."""
+    r = litho.card.resist
+    size = size or target.shape[0] - 2 * offset
+    filt = torch.zeros_like(target)
+    filt[offset:offset + size, offset:offset + size] = 1
+    params = params.clone().requires_grad_(True)
+    opt = torch.optim.SGD([params], lr=lr)
+    pool = lambda p: torch.nn.functional.avg_pool2d(p[None, None], 7, stride=1, padding=3)[0, 0]
+    best = (float("inf"), None, None)
+    for _ in range(iters):
+        mask = torch.sigmoid(steepness * (pool(params) - 0.5)) * filt
+        zn, zx, zm = (torch.sigmoid(r.steepness * (a - r.threshold)) for a in litho.aerials(mask))
+        curv = torch.nn.functional.conv2d(zn[None, None], _CURV.to(zn.dtype)[None, None])[0, 0]
+        loss = ((zx - target) ** 2).sum() + ((zx - zm) ** 2).sum() + w_curv * (curv**2).sum()
+        if loss.item() < best[0]:
+            with torch.no_grad():
+                m = (torch.sigmoid(steepness * (pool(params) - 0.5)) * filt > 0.5).to(target.dtype)
+            best = (loss.item(), params.detach().clone(), m)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    return best[1], best[2]
+
+
+def curv_multi(glp_path, kernel_dir, gradient: str = "exact", levels=((8, 200, 48), (4, 100, 96), (2, 100, 192))):
+    """LithoBench CurvMulti (config/curvilt{256,512,1024}.txt): coarse-to-fine curv_ilt, params
+    carried by 2x nearest upsampling. Yields (scale, binary mask on the (2048/scale)^2 grid) per level."""
+    params = None
+    for scale, iters, offset in levels:
+        n = 2048 // scale
+        t = glp_target(glp_path, size=n, inclusive=True, down=scale).float()
+        init = t if params is None else torch.nn.functional.interpolate(params[None, None], scale_factor=2, mode="nearest")[0, 0]
+        params, mask = curv_ilt(t, init, ICCAD13Litho(kernel_dir, (n, n), gradient=gradient), iters, offset=offset, size=n - 2 * offset)
+        yield scale, mask
