@@ -170,9 +170,26 @@ them with the commands above.
    Reproducing the table therefore needs `--gradient openilt-exact`; `--gradient exact` is
    the correct gradient but gives a different trajectory.
 
+   **Shipped litho labels match pixel for pixel.** LithoBench commits its CurvMulti outputs
+   as `pyilt/CurvILT_{mask,target,resist}N.png` (2048², written by `Basic.sim`), and we
+   compared them with anamorph's forward model on all 10 cases:
+   - nominal resist printed from their mask vs their resist PNG: **0 pixels different**
+     (80k–313k printed pixels per case);
+   - their target PNG vs `glp_target(inclusive=True)`: **0 pixels different**;
+   - their shipped masks scored by anamorph vs the published numbers: identical on 8
+     cases, ±1 px on cases 8 and 10.
+
+   So the published numbers come from exactly these masks, and our simulator and metrics
+   are an independent re-implementation of that pipeline. This tests the same 24-kernel
+   simulator as the rest of M0. It does not test physics.
+
    **Not checked:**
-   - **LithoBench dataset litho labels** (aerial/resist `.png` vs our forward model): the
-     14.7 GB Google Drive archive was over its download quota.
+   - **LithoBench dataset labels** (the MetalSet/ViaSet/StdMetal/StdContact tiles in
+     `lithodata.tar.gz`): the 14.7 GB Google Drive archive was still over its download
+     quota on retry. The other Drive files (code bundle, pretrained models) download fine.
+     Hugging Face has no mirror: `LithoBench/LithoBench` is an unrelated geology QA set,
+     and `LithoBench-PDE` reuses LithoBench masks but labels them with Maxwell/PEB
+     solutions, not LithoBench's aerial/resist images.
    - **LithoBench's SimpleILT comment numbers**: they come from `parallel()`, which needs
      `config/simpleilt512.txt`, and that file is not in the repository.
    - **MaskOpt**: there is no public data or code link, and its tables contain only
@@ -182,7 +199,7 @@ them with the commands above.
 
 | | Scope | Status |
 |---|---|---|
-| M0 | OpenILT/LithoBench reproduction, deterministic CI | **OpenILT: done against its code, not against its README table** (finding 6). We match OpenILT @dabb97c within 3e-5 on all 10 cases, but the README table is +5.9% / +7.5% off even for OpenILT's own code, so a 5% gate against that table fails for both. **LithoBench CurvMulti: done**, within 0.03% of its published numbers on all 10 cases (finding 7). Dataset-label parity and MaskOpt are blocked (no download / no public release). Shot counts use a greedy cover, not adabox, so they are not comparable |
+| M0 | OpenILT/LithoBench reproduction, deterministic CI | **OpenILT: done against its code, not against its README table** (finding 6). We match OpenILT @dabb97c within 3e-5 on all 10 cases, but the README table is +5.9% / +7.5% off even for OpenILT's own code, so a 5% gate against that table fails for both. **LithoBench CurvMulti: done**, within 0.03% of its published numbers on all 10 cases, and its shipped resist labels match with 0 pixels different (finding 7). Dataset-label parity and MaskOpt are blocked (no download / no public release). Shot counts use a greedy cover, not adabox, so they are not comparable |
 | M1 | Anamorphic Abbe/SOCS + GRF P_fail + MC validation | **Done** on CPU, including vector, obscuration, the saddlepoint tail and the MC gate |
 | M2 | Learned M3D vs rigorous reference; curvilinear MRC; EUV clips v0 | Operator, fitting loop, MRC and clips v0 are in. **No rigorous RCWA/FDTD reference yet**, so the M3D kernels stay at zero |
 | M3 | Multi-GPU full chip, agentic layer, paper | Tiling and healing run on a single device. The agent boundary and random-search baseline are in. **No NCCL and no LLM driver** |
