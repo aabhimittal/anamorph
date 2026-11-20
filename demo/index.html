@@ -1,0 +1,381 @@
+<title>anamorph playground</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Draw a High-NA EUV mask and watch it print: the anamorph forward model running in your browser, with stochastic failure probabilities from the engine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a scanner datasheet. Spec strip up top, the live mask/wafer pair as the hero, then evidence sections. */
+:root {
+  --bg: #f3f3f7; --surface: #ffffff; --fg: #17162b; --muted: #5c5a73; --line: #dddbe8;
+  --accent: #a85a06; --accent-soft: #f7e7cf; --chip: #ecebf3;
+  --c-gauss: #a85a06; --c-saddle: #4b3fbf; --c-mc: #17162b;
+  --ok: #1f8a57; --warn: #a85a06; --bad: #c43b3b;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f0e1b; --surface: #181729; --fg: #ebe9f6; --muted: #a29fbd; --line: #2d2b46;
+  --accent: #f2a33a; --accent-soft: #3b2a12; --chip: #232238;
+  --c-gauss: #f2a33a; --c-saddle: #a199ff; --c-mc: #ebe9f6;
+  --ok: #4cc38a; --warn: #f2a33a; --bad: #ff6b6b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f0e1b; --surface: #181729; --fg: #ebe9f6; --muted: #a29fbd; --line: #2d2b46;
+  --accent: #f2a33a; --accent-soft: #3b2a12; --chip: #232238;
+  --c-gauss: #f2a33a; --c-saddle: #a199ff; --c-mc: #ebe9f6;
+  --ok: #4cc38a; --warn: #f2a33a; --bad: #ff6b6b; color-scheme: dark; }
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(2rem, 5vw, 3.1rem); letter-spacing: -0.01em; }
+h2 { font-size: 1.6rem; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--accent); }
+.mono, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font: 500 0.75rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+header { display: grid; gap: 14px; }
+.lede { color: var(--muted); font-size: 1.05rem; }
+.spec { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.spec span { font: 0.8rem var(--mono); padding: 4px 10px; border-radius: 4px; background: var(--chip); }
+.spec b { font-weight: 500; color: var(--accent); }
+section { display: grid; gap: 18px; }
+.section-head { display: grid; gap: 6px; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: end; }
+.ctl { display: grid; gap: 6px; }
+.ctl > label, .ctl > .lbl { font: 500 0.72rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg button { font: 500 0.86rem var(--body); color: var(--fg); background: transparent; border: 0; padding: 7px 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn { font: 500 0.86rem var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+input[type=range] { width: 160px; accent-color: var(--accent); }
+.check { display: inline-flex; gap: 8px; align-items: center; font-size: 0.88rem; cursor: pointer; }
+.stage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.pane { display: grid; gap: 8px; min-width: 0; align-content: start; }
+.pane-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.pane-head small { color: var(--muted); font: 0.78rem var(--mono); }
+.canvas-box { display: flex; justify-content: center; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+canvas { display: block; width: 100%; max-width: 460px; aspect-ratio: 1; image-rendering: pixelated; border-radius: 3px; }
+#maskCanvas { touch-action: none; cursor: crosshair; }
+.reticle #maskCanvas { aspect-ratio: 1 / 2; max-width: 260px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+.legend i.cv { width: 26px; height: 12px; border: 0; border-radius: 2px; background: #1b1840 linear-gradient(var(--c), var(--c)) center / 18px 2px no-repeat; }
+.legend i.cv.dash { background: #1b1840 repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px) center / 18px 2px no-repeat; }
+.ramp { display: inline-block; width: 90px; height: 8px; border-radius: 2px; vertical-align: middle; margin: 0 6px;
+  background: linear-gradient(90deg, #0d0b2e, #3d2585 30%, #a3418f 55%, #f2a33a 80%, #fff4cf); }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.metric { background: var(--surface); padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.metric .k { font: 500 0.7rem/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.metric .v { font: 500 1.35rem/1.1 var(--mono); font-variant-numeric: tabular-nums; }
+.metric .s { font-size: 0.78rem; color: var(--muted); }
+.pill { display: inline-block; font: 500 0.72rem/1 var(--mono); padding: 4px 8px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+.note { font-size: 0.85rem; color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; gap: 8px; min-width: 0; }
+.chart svg { width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--muted); font: 10px var(--mono); }
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 0.7rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+summary { cursor: pointer; font-weight: 500; }
+footer { display: grid; gap: 8px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 18px; }
+footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+@media (max-width: 760px) { .stage, .charts { grid-template-columns: minmax(0, 1fr); } input[type=range] { width: 130px; } }
+@media (prefers-reduced-motion: no-preference) { .seg button, .btn { transition: background 120ms, color 120ms; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">anamorph · High-NA EUV inverse lithography</div>
+    <h1>Draw a mask. Watch it print.</h1>
+    <p class="lede">The panel below runs anamorph's imaging model in your browser: a 0.55 NA anamorphic EUV scanner images your mask onto the wafer, and a resist turns the light into a printed pattern. The optimized masks and their failure probabilities come from the Python engine.</p>
+    <div class="spec" id="spec"><span>Loading model…</span></div>
+  </header>
+
+  <section aria-labelledby="play-h">
+    <div class="section-head">
+      <div class="eyebrow">Live forward model</div>
+      <h2 id="play-h">Mask and wafer</h2>
+    </div>
+    <div class="controls">
+      <div class="ctl"><span class="lbl" id="clip-l">Clip</span>
+        <div class="seg" role="group" aria-labelledby="clip-l" id="clipSeg"></div></div>
+      <div class="ctl"><span class="lbl" id="cfg-l">Mask</span>
+        <div class="seg" role="group" aria-labelledby="cfg-l" id="cfgSeg">
+          <button type="button" data-cfg="target">Target as drawn</button>
+          <button type="button" data-cfg="epe_only">ILT · edge placement</button>
+          <button type="button" data-cfg="stochastic">ILT · stochastic-aware</button>
+        </div></div>
+      <div class="ctl"><label for="dose">Dose <span class="num" id="doseVal">100%</span></label>
+        <input type="range" id="dose" min="85" max="115" step="1" value="100"></div>
+    </div>
+    <div class="controls">
+      <div class="ctl"><span class="lbl" id="brush-l">Brush</span>
+        <div class="seg" role="group" aria-labelledby="brush-l" id="brushSeg">
+          <button type="button" data-brush="1" aria-pressed="true">Open</button>
+          <button type="button" data-brush="0">Absorber</button>
+        </div></div>
+      <div class="ctl"><label for="size">Brush size</label>
+        <select id="size" class="btn"><option value="1">1 nm</option><option value="2" selected>2 nm</option><option value="4">4 nm</option></select></div>
+      <button type="button" class="btn" id="reset">Reset mask</button>
+      <label class="check"><input type="checkbox" id="reticle"> Show mask at reticle scale (4× / 8×)</label>
+    </div>
+
+    <div class="stage">
+      <div class="pane" id="maskPane">
+        <div class="pane-head"><h3>Mask</h3><small id="maskDims"></small></div>
+        <div class="canvas-box"><canvas id="maskCanvas" width="512" height="512" aria-label="Mask editor: drag to paint open or absorber pixels"></canvas></div>
+        <div class="legend"><span><i style="border-color:#d9d4ef;border-top-width:8px"></i>Open (multilayer mirror)</span><span><i style="border-color:#2b2740;border-top-width:8px"></i>Absorber</span><span><i class="cv dash" style="--c:#5fd4c4"></i>Target</span></div>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><h3>Wafer</h3><small id="timing"></small></div>
+        <div class="canvas-box"><canvas id="waferCanvas" width="512" height="512" aria-label="Resist latent image with printed contour and stochastic gauges"></canvas></div>
+        <div class="legend"><span>Latent intensity<span class="ramp"></span></span><span><i class="cv" style="--c:#ffffff"></i>Printed edge</span><span><i class="cv dash" style="--c:#5fd4c4"></i>Target</span></div>
+        <div class="legend"><span>Gauge, log₁₀ P_fail:</span><span><i class="cv" style="--c:#4cc38a"></i>&lt; −9</span><span><i class="cv" style="--c:#f2a33a"></i>−9 to −6</span><span><i class="cv" style="--c:#ff6b6b"></i>&gt; −6</span><span><i class="cv" style="--c:#9a98ad"></i>not computed</span></div>
+      </div>
+    </div>
+
+    <div class="metrics" aria-live="polite">
+      <div class="metric"><span class="k">Printed vs target</span><span class="v" id="mL2">–</span><span class="s">pixels wrong, live in browser</span></div>
+      <div class="metric"><span class="k">Worst P_fail</span><span class="v" id="mP">–</span><span class="s" id="mPs">engine, per gauge</span></div>
+      <div class="metric"><span class="k">PV band</span><span class="v" id="mPVB">–</span><span class="s">nm², ±3% dose, 20 nm defocus</span></div>
+      <div class="metric"><span class="k">MRC violations</span><span class="v" id="mMRC">–</span><span class="s">8 nm × 4 nm wafer rule</span></div>
+      <div class="metric"><span class="k">Model check</span><span class="v" id="mCheck">–</span><span class="s" id="mChecks">browser vs engine</span></div>
+    </div>
+    <p class="note" id="editNote">Engine metrics are for the selected mask. If you paint on it, the live pixel count and the image keep updating, but P_fail, PV band and MRC need the Python engine, so they show as not computed.</p>
+  </section>
+
+  <section aria-labelledby="tail-h">
+    <div class="section-head">
+      <div class="eyebrow">Why the stochastic model matters</div>
+      <h2 id="tail-h">Photon shot noise is skewed, so the Gaussian tail is wrong</h2>
+      <p>At low dose, acid counts follow a compound Poisson distribution. A Gaussian with the same mean and variance gets the tails wrong, and in opposite directions. Bridges (resist that should stay dark prints) live in the upper tail, which the Gaussian under-predicts by up to 35× here. Breaks live in the lower tail, which it over-predicts. anamorph's saddlepoint tail uses the exact cumulant generating function and stays inside the Monte-Carlo confidence interval.</p>
+    </div>
+    <div class="charts">
+      <div class="chart"><h3>Bridge gauge (upper tail)</h3><svg id="chartBridge" viewBox="0 0 340 230" role="img" aria-label="Bridge failure probability versus resist threshold"></svg></div>
+      <div class="chart"><h3>Break gauge (lower tail)</h3><svg id="chartBreak" viewBox="0 0 340 230" role="img" aria-label="Break failure probability versus resist threshold"></svg></div>
+    </div>
+    <div class="legend"><span><i style="border-color:var(--c-gauss);border-top-style:dashed"></i>Gaussian random field</span><span><i style="border-color:var(--c-saddle)"></i>Saddlepoint (anamorph)</span><span>● Monte Carlo, 20,000 trials, 95% interval (▼ = no failures seen, upper bound)</span></div>
+    <p class="note">16 nm lines and spaces, dipole illumination, 10 mJ/cm², 3 nm acid blur; one point gauge per failure type. The same operating point is checked in <span class="mono">tests/test_stochastic.py</span>.</p>
+  </section>
+
+  <section aria-labelledby="parity-h">
+    <div class="section-head">
+      <div class="eyebrow">Milestone M0</div>
+      <h2 id="parity-h">It reproduces the published ILT baselines</h2>
+      <p>On the 10 ICCAD-13 metal clips, with the contest's 24 optical kernels, anamorph reruns two open-source ILT codes side by side and lands on the same masks.</p>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Baseline</th><th>anamorph vs their code</th><th>Both vs their published table</th></tr></thead>
+      <tbody>
+        <tr><td>OpenILT SimpleILT <span class="pill">@dabb97c</span></td><td>Same final mask (≤ 1 px different), L2/PVB within 3e-5</td><td><span class="pill warn">+5.9% L2, +7.5% PVB</span> The README table does not reproduce for OpenILT's own code either</td></tr>
+        <tr><td>LithoBench CurvMulti <span class="pill">@9c74e82</span></td><td>Final masks 0–32 px different out of 1M</td><td><span class="pill ok">within 0.03%</span> on all 10 cases</td></tr>
+        <tr><td>LithoBench shipped resist images</td><td>Resist printed from their mask: <b>0 pixels different</b> on 10/10</td><td><span class="pill ok">exact</span> Their masks score the published numbers to ±1 px</td></tr>
+      </tbody>
+    </table></div>
+    <details><summary>Per-case LithoBench CurvMulti numbers</summary>
+      <div class="table-wrap" style="margin-top:10px"><table id="lbTable">
+        <thead><tr><th>Case</th><th class="num">Published L2 / PVB / EPE</th><th class="num">anamorph</th><th class="num">ΔL2</th><th class="num">ΔPVB</th></tr></thead><tbody></tbody>
+      </table></div>
+    </details>
+  </section>
+
+  <footer>
+    <div class="eyebrow">What this page is and is not</div>
+    <ul>
+      <li>The scanner and resist numbers are an illustrative High-NA card from public literature, not calibrated to any tool. Absolute P_fail values are model-relative.</li>
+      <li>The browser uses the 24 strongest of the engine's SOCS kernels (aerial error ≤ 0.0075 against the full 0.995-energy set). On load it checks itself against the engine at 48 pixels per clip.</li>
+      <li>Thin-mask optics only: 3D mask effects need a rigorous reference that is not built yet.</li>
+      <li>Source: <a href="https://github.com/aabhimittal/anamorph" target="_blank" rel="noopener">github.com/aabhimittal/anamorph</a>. Regenerate the data with <span class="mono">python demo/build_data.py</span>.</li>
+    </ul>
+  </footer>
+</div>
+
+<script src="litho.js"></script>
+<script>
+(function () {
+  const $ = s => document.querySelector(s);
+  const LB = [[1,39112,48831,3,39112,48831,3],[2,31082,39102,0,31082,39100,0],[3,63569,76183,17,63569,76183,17],[4,8844,23986,0,8844,23986,0],[5,28721,53856,0,28721,53856,0],[6,29981,49084,0,29981,49084,0],[7,14813,42364,0,14813,42364,0],[8,10937,21210,0,10938,21209,0],[9,34791,62161,0,34791,62161,0],[10,7558,17393,0,7556,17390,0]];
+  const CLIP_NAMES = { ls: "Line / space", t2t: "Tip-to-tip", via: "Vias" };
+  const S = { clip: "t2t", cfg: "stochastic", brush: 1, size: 2, dose: 1, edited: false, mask: null };
+  let D, models = {}, pending = false, painting = false;
+
+  fetch("data.json").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(init).catch(e => { $("#spec").innerHTML = "<span>Could not load the model data (" + e.message + "). Reload the page to try again.</span>"; });
+
+  const bits = s => { const a = new Float64Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) === 49 ? 1 : 0; return a; };
+  const clip = () => D.clips.find(c => c.key === S.clip);
+
+  function init(d) {
+    D = d;
+    const c = d.card, ks = Object.values(d.grids).map(g => g.k_total);
+    $("#spec").innerHTML = [
+      ["λ", c.wavelength_nm + " nm"], ["NA", c.na], ["Mag", c.magnification.map(m => m + "×").join(" / ")],
+      ["Obscuration", Math.round(c.obscuration * 100) + "%"], ["Dose", c.dose_mj_cm2 + " mJ/cm²"],
+      ["Resist", "threshold " + c.threshold + ", blur σ " + c.diffusion_nm + " nm"],
+      ["SOCS", c.k_browser + " of " + Math.min(...ks) + "–" + Math.max(...ks) + " kernels"],
+      ["MRC", c.mrc_reticle_nm + " nm reticle → " + c.mrc_reticle_nm / c.magnification[0] + " × " + c.mrc_reticle_nm / c.magnification[1] + " nm wafer"]
+    ].map(([k, v]) => "<span>" + k + " <b>" + v + "</b></span>").join("");
+    for (const k in d.grids) models[k] = makeLitho(c, d.grids[k]);
+    let err = 0;
+    for (const cl of d.clips) { const L = models[cl.n].latent(bits(cl.target)); for (const [i, v] of cl.probes) err = Math.max(err, Math.abs(L[i] - v)); }
+    $("#mCheck").textContent = err < 1e-4 ? "match" : "drift";
+    $("#mCheck").style.color = err < 1e-4 ? "var(--ok)" : "var(--bad)";
+    $("#mChecks").textContent = "max |Δ| " + err.toExponential(1) + " at " + d.clips.reduce((a, cl) => a + cl.probes.length, 0) + " pixels";
+    $("#clipSeg").innerHTML = d.clips.map(cl => '<button type="button" data-clip="' + cl.key + '" title="' + cl.label + '">' + CLIP_NAMES[cl.key] + "</button>").join("");
+    $("#lbTable tbody").innerHTML = LB.map(r => "<tr><td>" + r[0] + '</td><td class="num">' + r.slice(1, 4).join(" / ") + '</td><td class="num">' + r.slice(4, 7).join(" / ") +
+      '</td><td class="num">' + pct(r[4], r[1]) + '</td><td class="num">' + pct(r[5], r[2]) + "</td></tr>").join("");
+    chart($("#chartBridge"), d.tails.find(t => t.kind === "bridge"));
+    chart($("#chartBreak"), d.tails.find(t => t.kind === "break"));
+    wire();
+    load();
+  }
+  const pct = (a, b) => { const v = 100 * (a / b - 1); return (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) + "%"; };
+
+  function wire() {
+    $("#clipSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.clip = b.dataset.clip; load(); } });
+    $("#cfgSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.cfg = b.dataset.cfg; load(); } });
+    $("#brushSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.brush = +b.dataset.brush; press("#brushSeg", "brush", b.dataset.brush); } });
+    $("#size").addEventListener("change", e => { S.size = +e.target.value; });
+    $("#reset").addEventListener("click", load);
+    $("#dose").addEventListener("input", e => { S.dose = e.target.value / 100; $("#doseVal").textContent = e.target.value + "%"; schedule(); });
+    $("#reticle").addEventListener("change", e => { $("#maskPane").classList.toggle("reticle", e.target.checked); dims(); });
+    const cv = $("#maskCanvas");
+    cv.addEventListener("pointerdown", e => { painting = true; cv.setPointerCapture(e.pointerId); paint(e); });
+    cv.addEventListener("pointermove", e => { if (painting) paint(e); });
+    ["pointerup", "pointercancel"].forEach(t => cv.addEventListener(t, () => { painting = false; }));
+  }
+  function press(sel, key, val) { document.querySelectorAll(sel + " button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset[key] === String(val)))); }
+  function dims() {
+    const n = clip().n, m = D.card.magnification;
+    $("#maskDims").textContent = $("#reticle").checked ? n * m[0] + " × " + n * m[1] + " nm on the reticle" : n + " × " + n + " nm at the wafer";
+  }
+
+  function load() {
+    S.mask = bits(clip().masks[S.cfg].bits); S.edited = false;
+    press("#clipSeg", "clip", S.clip); press("#cfgSeg", "cfg", S.cfg); dims(); schedule();
+  }
+  function paint(e) {
+    const cv = $("#maskCanvas"), r = cv.getBoundingClientRect(), n = clip().n;
+    const x = Math.floor((e.clientX - r.left) / r.width * n), y = Math.floor((e.clientY - r.top) / r.height * n), h = Math.floor(S.size / 2);
+    for (let dy = 0; dy < S.size; dy++) for (let dx = 0; dx < S.size; dx++) {
+      const yy = ((y - h + dy) % n + n) % n, xx = ((x - h + dx) % n + n) % n;
+      if (S.mask[yy * n + xx] !== S.brush) { S.mask[yy * n + xx] = S.brush; S.edited = true; }
+    }
+    schedule();
+  }
+  function schedule() { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; render(); }); } }
+
+  // indigo -> violet -> magenta -> amber -> pale: the latent image on a fixed 0..0.6 scale
+  const STOPS = [[0, [13, 11, 46]], [0.3, [61, 37, 133]], [0.55, [163, 65, 143]], [0.8, [242, 163, 58]], [1, [255, 244, 207]]];
+  function cmap(v) {
+    v = Math.min(1, Math.max(0, v));
+    for (let i = 1; i < STOPS.length; i++) if (v <= STOPS[i][0]) {
+      const [a, ca] = STOPS[i - 1], [b, cb] = STOPS[i], t = (v - a) / (b - a);
+      return ca.map((c, j) => c + (cb[j] - c) * t);
+    }
+    return STOPS[STOPS.length - 1][1];
+  }
+
+  function render() {
+    const cl = clip(), n = cl.n, t0 = performance.now();
+    const lat = models[n].latent(S.mask), thr = D.card.threshold, tgt = bits(cl.target);
+    const printed = new Uint8Array(n * n);
+    let wrong = 0;
+    for (let i = 0; i < n * n; i++) { printed[i] = lat[i] * S.dose > thr ? 1 : 0; wrong += printed[i] !== tgt[i]; }
+    $("#timing").textContent = "computed in " + Math.round(performance.now() - t0) + " ms";
+    drawMask(cl, tgt); drawWafer(cl, lat, printed, tgt); metrics(cl, wrong);
+  }
+
+  function pixels(ctx, n, color) {
+    const off = document.createElement("canvas"); off.width = off.height = n;
+    const oc = off.getContext("2d"), img = oc.createImageData(n, n);
+    for (let i = 0; i < n * n; i++) { const c = color(i); img.data.set([c[0], c[1], c[2], 255], i * 4); }
+    oc.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false; ctx.drawImage(off, 0, 0, ctx.canvas.width, ctx.canvas.height);
+  }
+  function outline(ctx, n, a, color, dash) {
+    const sx = ctx.canvas.width / n, sy = ctx.canvas.height / n;
+    ctx.beginPath();
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const v = a[y * n + x];
+      if (x < n - 1 && v !== a[y * n + x + 1]) { ctx.moveTo((x + 1) * sx, y * sy); ctx.lineTo((x + 1) * sx, (y + 1) * sy); }
+      if (y < n - 1 && v !== a[(y + 1) * n + x]) { ctx.moveTo(x * sx, (y + 1) * sy); ctx.lineTo((x + 1) * sx, (y + 1) * sy); }
+    }
+    ctx.setLineDash(dash || []); ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.stroke(); ctx.setLineDash([]);
+  }
+  function drawMask(cl, tgt) {
+    const cv = $("#maskCanvas"), n = cl.n;
+    cv.height = $("#reticle").checked ? 1024 : 512;
+    const ctx = cv.getContext("2d");
+    pixels(ctx, n, i => S.mask[i] ? [217, 212, 239] : [43, 39, 64]);
+    outline(ctx, n, tgt, "#5fd4c4", [4, 3]);
+  }
+  function drawWafer(cl, lat, printed, tgt) {
+    const ctx = $("#waferCanvas").getContext("2d"), n = cl.n;
+    pixels(ctx, n, i => cmap(lat[i] * S.dose / 0.6));
+    outline(ctx, n, tgt, "#5fd4c4", [4, 3]);
+    outline(ctx, n, printed, "#ffffff");
+    const s = 512 / n, lp = S.edited ? null : cl.masks[S.cfg].log10_pfail;
+    cl.gauges.forEach((g, k) => {
+      const v = lp && lp[k], col = v == null ? "#9a98ad" : v < -9 ? "#4cc38a" : v < -6 ? "#f2a33a" : "#ff6b6b";
+      ctx.strokeStyle = ctx.fillStyle = col; ctx.lineWidth = 3;
+      if (g.points.length === 1) { ctx.beginPath(); ctx.arc((g.points[0][0] + 0.5) * s, (g.points[0][1] + 0.5) * s, 5, 0, 2 * Math.PI); ctx.fill(); return; }
+      ctx.beginPath(); g.points.forEach(([x, y], j) => (j ? ctx.lineTo : ctx.moveTo).call(ctx, (x + 0.5) * s, (y + 0.5) * s)); ctx.stroke();
+    });
+  }
+  function metrics(cl, wrong) {
+    const m = cl.masks[S.cfg];
+    $("#mL2").textContent = wrong.toLocaleString("en-US");
+    if (S.edited) {
+      ["#mP", "#mPVB", "#mMRC"].forEach(id => { $(id).textContent = "–"; $(id).style.color = ""; });
+      $("#mPs").textContent = "not computed for an edited mask";
+      return;
+    }
+    const k = m.log10_pfail.indexOf(Math.max(...m.log10_pfail)), v = m.log10_pfail[k];
+    $("#mP").innerHTML = "10<sup>" + v.toFixed(1).replace("-", "−") + "</sup>";
+    $("#mP").style.color = v < -9 ? "var(--ok)" : v < -6 ? "var(--warn)" : "var(--bad)";
+    $("#mPs").textContent = cl.gauges[k].kind + " gauge, engine";
+    $("#mPVB").textContent = m.pvb.toLocaleString("en-US");
+    $("#mMRC").textContent = m.mrc.toLocaleString("en-US");
+  }
+
+  function chart(svg, t) {
+    const W = 340, H = 230, L = 44, R = 10, T = 10, B = 34, pts = t.points;
+    const x0 = pts[0].threshold, x1 = pts[pts.length - 1].threshold, y0 = -8, y1 = 0;
+    const X = v => L + (v - x0) / (x1 - x0) * (W - L - R), Y = v => T + (y1 - Math.max(y0, Math.min(y1, v))) / (y1 - y0) * (H - T - B);
+    const lg = v => v > 0 ? Math.log10(v) : -Infinity;
+    let h = '<defs><clipPath id="c' + t.kind + '"><rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '"/></clipPath></defs>';
+    for (let d = y0; d <= y1; d += 2) h += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(d) + '" y2="' + Y(d) + '" stroke="var(--line)"/><text x="' + (L - 6) + '" y="' + (Y(d) + 3) + '" text-anchor="end">1e' + d + "</text>";
+    pts.forEach((p, i) => { if (i % (pts.length > 7 ? 2 : 1) === 0) h += '<text x="' + X(p.threshold) + '" y="' + (H - B + 16) + '" text-anchor="middle">' + p.threshold.toFixed(2) + "</text>"; });
+    h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 2) + '" text-anchor="middle">resist threshold</text>';
+    const line = (key, col, dash) => '<polyline clip-path="url(#c' + t.kind + ')" fill="none" stroke="' + col + '" stroke-width="2" ' + (dash ? 'stroke-dasharray="5 4"' : "") +
+      ' points="' + pts.map(p => X(p.threshold) + "," + Y(lg(p[key]))).join(" ") + '"/>';
+    h += line("p_gauss", "var(--c-gauss)", true) + line("p_saddle", "var(--c-saddle)", false);
+    pts.forEach(p => {
+      const x = X(p.threshold);
+      if (p.p_mc > 0) {
+        h += '<line x1="' + x + '" x2="' + x + '" y1="' + Y(lg(p.ci[0])) + '" y2="' + Y(lg(p.ci[1])) + '" stroke="var(--c-mc)" stroke-width="1.2"/>';
+        h += '<circle cx="' + x + '" cy="' + Y(lg(p.p_mc)) + '" r="3.2" fill="var(--c-mc)"/>';
+      } else {
+        const y = Y(lg(p.ci[1]));
+        h += '<path d="M' + (x - 4) + "," + (y - 3) + " L" + (x + 4) + "," + (y - 3) + " L" + x + "," + (y + 4) + 'Z" fill="var(--c-mc)"/>';
+      }
+    });
+    svg.innerHTML = h;
+  }
+})();
+</script>
