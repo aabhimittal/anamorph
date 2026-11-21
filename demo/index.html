@@ -91,9 +91,18 @@ tr:last-child td { border-bottom: 0; }
 td.num, th.num { text-align: right; white-space: nowrap; }
 details { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 summary { cursor: pointer; font-weight: 500; }
+details.guide { padding: 14px 18px; }
+details.guide > summary { font-family: var(--display); font-size: 1.15rem; font-weight: 600; }
+.guide-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 14px; }
+.guide-grid > div { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.guide-grid ol, .guide-grid ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 0.9rem; }
+.guide-grid dl { margin: 0; display: grid; gap: 8px; font-size: 0.9rem; }
+.guide-grid dt { font-weight: 600; }
+.guide-grid dd { margin: 0; color: var(--muted); }
+.read { font-size: 0.88rem; border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; max-width: 75ch; }
 footer { display: grid; gap: 8px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 18px; }
 footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
-@media (max-width: 760px) { .stage, .charts { grid-template-columns: minmax(0, 1fr); } input[type=range] { width: 130px; } }
+@media (max-width: 760px) { .stage, .charts, .guide-grid { grid-template-columns: minmax(0, 1fr); } input[type=range] { width: 130px; } }
 @media (prefers-reduced-motion: no-preference) { .seg button, .btn { transition: background 120ms, color 120ms; } }
 </style>
 
@@ -104,6 +113,41 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
     <p class="lede">The panel below runs anamorph's imaging model in your browser: a 0.55 NA anamorphic EUV scanner images your mask onto the wafer, and a resist turns the light into a printed pattern. The optimized masks and their failure probabilities come from the Python engine.</p>
     <div class="spec" id="spec"><span>Loading model…</span></div>
   </header>
+
+  <details class="guide" open>
+    <summary>How to use and read this page</summary>
+    <div class="guide-grid">
+      <div>
+        <h3>Use it</h3>
+        <ol>
+          <li><b>Pick a clip.</b> Each is a small tile (96–128 nm) of a typical High-NA pattern: line/space, tip-to-tip (two line ends facing across a gap), or a via array.</li>
+          <li><b>Pick a mask.</b> "Target as drawn" sends the design straight to the mask with no correction. The two ILT masks were optimized by the engine: one for edge placement only, one also for stochastic failure.</li>
+          <li><b>Slide the dose</b> (85–115%) to expose harder or softer and watch the printed edges move.</li>
+          <li><b>Paint on the mask.</b> Drag with the Open or Absorber brush; pick 1, 2 or 4 nm. The wafer updates as you draw. Reset mask restores the selected mask.</li>
+          <li><b>Tick "reticle scale"</b> to see the same mask as it sits on the reticle: stretched twice as tall as wide, because High-NA demagnifies 4× in x and 8× in y.</li>
+        </ol>
+      </div>
+      <div>
+        <h3>Read it</h3>
+        <dl>
+          <dt>Mask panel</dt><dd>Light pixels reflect EUV light (open multilayer mirror), dark pixels absorb it. The teal dashed outline is the pattern you want on the wafer.</dd>
+          <dt>Wafer panel</dt><dd>The color is the light dose the resist received after acid blur (dark = little, pale = a lot). Resist prints where it exceeds the threshold; the white line is that printed edge. A good mask puts the white line on the teal dashed target.</dd>
+          <dt>Gauges</dt><dd>Short lines and dots at the places a pattern can fail: a break (a line pinches off), a bridge (two features merge) or a missing via. Color is the engine's failure probability, P_fail, per gauge.</dd>
+          <dt>Worst P_fail</dt><dd>The riskiest gauge. 10<sup>−9</sup> means about one failure per billion copies of that feature, which is the scale a chip with billions of vias needs. Higher (closer to 0) is worse.</dd>
+          <dt>Other metrics</dt><dd>Printed vs target counts wrong pixels at the current dose. PV band is the area that changes across ±3% dose and 20 nm defocus (smaller is more robust). MRC counts mask features too small to manufacture. Model check confirms this page matches the Python engine.</dd>
+        </dl>
+      </div>
+      <div>
+        <h3>Try this</h3>
+        <ul>
+          <li><b>Shape vs. survival.</b> On Tip-to-tip, step through the three masks. Edge-placement ILT matches the target best, yet its worst gauge is 10<sup>−5.3</sup>, worse than the uncorrected target (10<sup>−9.2</sup>). The stochastic-aware mask reaches 10<sup>−14.8</sup> by giving up some shape fidelity: more wrong pixels, far fewer failures.</li>
+          <li><b>Why masks need correction.</b> On Line/space, choose "Target as drawn": the printed lines miss the target and the worst gauge sits at 10<sup>−4.4</sup>. Switch to either ILT mask and the edges snap onto the target.</li>
+          <li><b>Dose sensitivity.</b> On Vias, drag the dose from 85% to 115% and watch the openings grow. P_fail stays at its 100%-dose value; only the image is recomputed.</li>
+          <li><b>Break it yourself.</b> Paint absorber across one tip-to-tip line end, or open a pixel in a gap, and watch where the printed edge moves. Gauges turn grey because P_fail needs the engine.</li>
+        </ul>
+      </div>
+    </div>
+  </details>
 
   <section aria-labelledby="play-h">
     <div class="section-head">
@@ -169,6 +213,7 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
       <div class="chart"><h3>Break gauge (lower tail)</h3><svg id="chartBreak" viewBox="0 0 340 230" role="img" aria-label="Break failure probability versus resist threshold"></svg></div>
     </div>
     <div class="legend"><span><i style="border-color:var(--c-gauss);border-top-style:dashed"></i>Gaussian random field</span><span><i style="border-color:var(--c-saddle)"></i>Saddlepoint (anamorph)</span><span>● Monte Carlo, 20,000 trials, 95% interval (▼ = no failures seen, upper bound)</span></div>
+    <p class="read"><b>How to read the charts:</b> each plots the chance that one gauge fails (log scale: 1e0 = always, 1e-8 = once in 100 million) against the resist threshold. The dots are ground truth from Monte Carlo. A model is right where its line passes through the dots: the solid saddlepoint line does, the dashed Gaussian drifts away. On bridges the Gaussian sits below the dots, so it would call a risky mask safe.</p>
     <p class="note">16 nm lines and spaces, dipole illumination, 10 mJ/cm², 3 nm acid blur; one point gauge per failure type. The same operating point is checked in <span class="mono">tests/test_stochastic.py</span>.</p>
   </section>
 
@@ -186,6 +231,7 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
         <tr><td>LithoBench shipped resist images</td><td>Resist printed from their mask: <b>0 pixels different</b> on 10/10</td><td><span class="pill ok">exact</span> Their masks score the published numbers to ±1 px</td></tr>
       </tbody>
     </table></div>
+    <p class="read"><b>How to read the table:</b> the middle column asks whether anamorph re-implements each baseline's algorithm exactly (same masks from the same inputs). The right column asks whether the numbers the authors published can be reproduced at all, by their code or ours. L2 counts wrong pixels and PVB measures process-window robustness; lower is better for both.</p>
     <details><summary>Per-case LithoBench CurvMulti numbers</summary>
       <div class="table-wrap" style="margin-top:10px"><table id="lbTable">
         <thead><tr><th>Case</th><th class="num">Published L2 / PVB / EPE</th><th class="num">anamorph</th><th class="num">ΔL2</th><th class="num">ΔPVB</th></tr></thead><tbody></tbody>
