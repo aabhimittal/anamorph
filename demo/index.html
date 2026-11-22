@@ -57,7 +57,15 @@ section { display: grid; gap: 18px; }
 .btn { font: 500 0.86rem var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
 input[type=range] { width: 160px; accent-color: var(--accent); }
 .check { display: inline-flex; gap: 8px; align-items: center; font-size: 0.88rem; cursor: pointer; }
-.stage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.stage { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.seg button:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.55; }
+.compare-head { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+.errs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.errs { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.errs ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 0.88rem; }
+.errs li { display: flex; gap: 8px; align-items: baseline; }
+.dot { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font: 600 0.68rem var(--mono); color: #14121f; }
+.btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .pane { display: grid; gap: 8px; min-width: 0; align-content: start; }
 .pane-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .pane-head small { color: var(--muted); font: 0.78rem var(--mono); }
@@ -102,7 +110,7 @@ details.guide > summary { font-family: var(--display); font-size: 1.15rem; font-
 .read { font-size: 0.88rem; border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; max-width: 75ch; }
 footer { display: grid; gap: 8px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 18px; }
 footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
-@media (max-width: 760px) { .stage, .charts, .guide-grid { grid-template-columns: minmax(0, 1fr); } input[type=range] { width: 130px; } }
+@media (max-width: 760px) { .stage, .charts, .guide-grid, .errs-grid { grid-template-columns: minmax(0, 1fr); } input[type=range] { width: 130px; } }
 @media (prefers-reduced-motion: no-preference) { .seg button, .btn { transition: background 120ms, color 120ms; } }
 </style>
 
@@ -110,7 +118,7 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   <header>
     <div class="eyebrow">anamorph · High-NA EUV inverse lithography</div>
     <h1>Draw a mask. Watch it print.</h1>
-    <p class="lede">The panel below runs anamorph's imaging model in your browser: a 0.55 NA anamorphic EUV scanner images your mask onto the wafer, and a resist turns the light into a printed pattern. The optimized masks and their failure probabilities come from the Python engine.</p>
+    <p class="lede">The panel below runs anamorph's imaging model in your browser: a 0.55 NA anamorphic EUV scanner images your mask onto the wafer, and a resist turns the light into a printed pattern. The optimized masks and their failure probabilities come from the Python engine. Next to it, the same pattern is made by nanoimprint, so you can compare a projector with a stamp.</p>
     <div class="spec" id="spec"><span>Loading model…</span></div>
   </header>
 
@@ -125,6 +133,7 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
           <li><b>Slide the dose</b> (85–115%) to expose harder or softer and watch the printed edges move.</li>
           <li><b>Paint on the mask.</b> Drag with the Open or Absorber brush; pick 1, 2 or 4 nm. The wafer updates as you draw. Reset mask restores the selected mask.</li>
           <li><b>Tick "reticle scale"</b> to see the same mask as it sits on the reticle: stretched twice as tall as wide, because High-NA demagnifies 4× in x and 8× in y.</li>
+          <li><b>Draw your own pattern.</b> Choose "Draw your own" (a 128 nm tile with a starter drawing), "Clear mask" for a blank one, then drag with the Rectangle tool or paint with the Brush. 1 pixel is 1 nm on the wafer. Your drawing is the target for both EUV and nanoimprint.</li>
         </ol>
       </div>
       <div>
@@ -134,6 +143,8 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
           <dt>Wafer panel</dt><dd>The color is the light dose the resist received after acid blur (dark = little, pale = a lot). Resist prints where it exceeds the threshold; the white line is that printed edge. A good mask puts the white line on the teal dashed target.</dd>
           <dt>Gauges</dt><dd>Short lines and dots at the places a pattern can fail: a break (a line pinches off), a bridge (two features merge) or a missing via. Color is the engine's failure probability, P_fail, per gauge.</dd>
           <dt>Worst P_fail</dt><dd>The riskiest gauge. 10<sup>−9</sup> means about one failure per billion copies of that feature, which is the scale a chip with billions of vias needs. Higher (closer to 0) is worse.</dd>
+          <dt>Error marks</dt><dd>Red pixels printed where nothing should be; blue pixels should have printed but did not. Numbered dots point to the errors listed under "EUV lithography vs. nanoimprint".</dd>
+          <dt>Nanoimprint panel</dt><dd>The same target made by pressing a 1× template into resist. No optics, so no blur: only about 1 nm of corner rounding from resist flow. Its weak point is particles, which you can drop in with the button below the panels.</dd>
           <dt>Other metrics</dt><dd>Printed vs target counts wrong pixels at the current dose. PV band is the area that changes across ±3% dose and 20 nm defocus (smaller is more robust). MRC counts mask features too small to manufacture. Model check confirms this page matches the Python engine.</dd>
         </dl>
       </div>
@@ -143,6 +154,8 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
           <li><b>Shape vs. survival.</b> On Tip-to-tip, step through the three masks. Edge-placement ILT matches the target best, yet its worst gauge is 10<sup>−5.3</sup>, worse than the uncorrected target (10<sup>−9.2</sup>). The stochastic-aware mask reaches 10<sup>−14.8</sup> by giving up some shape fidelity: more wrong pixels, far fewer failures.</li>
           <li><b>Why masks need correction.</b> On Line/space, choose "Target as drawn": the printed lines miss the target and the worst gauge sits at 10<sup>−4.4</sup>. Switch to either ILT mask and the edges snap onto the target.</li>
           <li><b>Dose sensitivity.</b> On Vias, drag the dose from 85% to 115% and watch the openings grow. P_fail stays at its 100%-dose value; only the image is recomputed.</li>
+          <li><b>Below the resolution limit.</b> In "Draw your own", the 6 nm line on the right vanishes in EUV (the lens cannot resolve features under about 6–7 nm) but imprints in NIL. EUV also rounds every corner and pulls the L's open end back about 3 nm; EUV gets roughly 1,000 nm² wrong against about 30 nm² for NIL. Then draw a rectangle a few nm from another shape and watch EUV bridge them.</li>
+          <li><b>Blur vs. particles.</b> On Tip-to-tip, compare the yield rows for each mask, then slide the NIL defect density. The edge-placement mask fails a 1 cm² area almost surely; the stochastic-aware mask beats NIL until NIL gets below about 10<sup>−4</sup> particles per cm².</li>
           <li><b>Break it yourself.</b> Paint absorber across one tip-to-tip line end, or open a pixel in a gap, and watch where the printed edge moves. Gauges turn grey because P_fail needs the engine.</li>
         </ul>
       </div>
@@ -167,14 +180,23 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
         <input type="range" id="dose" min="85" max="115" step="1" value="100"></div>
     </div>
     <div class="controls">
-      <div class="ctl"><span class="lbl" id="brush-l">Brush</span>
+      <div class="ctl"><span class="lbl" id="tool-l">Tool</span>
+        <div class="seg" role="group" aria-labelledby="tool-l" id="toolSeg">
+          <button type="button" data-tool="brush" aria-pressed="true">Brush</button>
+          <button type="button" data-tool="rect">Rectangle</button>
+        </div></div>
+      <div class="ctl"><span class="lbl" id="brush-l">Paint</span>
         <div class="seg" role="group" aria-labelledby="brush-l" id="brushSeg">
           <button type="button" data-brush="1" aria-pressed="true">Open</button>
           <button type="button" data-brush="0">Absorber</button>
         </div></div>
       <div class="ctl"><label for="size">Brush size</label>
-        <select id="size" class="btn"><option value="1">1 nm</option><option value="2" selected>2 nm</option><option value="4">4 nm</option></select></div>
+        <select id="size" class="btn"><option value="1">1 nm</option><option value="2" selected>2 nm</option><option value="4">4 nm</option><option value="8">8 nm</option></select></div>
       <button type="button" class="btn" id="reset">Reset mask</button>
+      <button type="button" class="btn" id="clear">Clear mask</button>
+    </div>
+    <div class="controls">
+      <label class="check"><input type="checkbox" id="showErr" checked> Mark printing errors</label>
       <label class="check"><input type="checkbox" id="reticle"> Show mask at reticle scale (4× / 8×)</label>
     </div>
 
@@ -190,6 +212,12 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
         <div class="legend"><span>Latent intensity<span class="ramp"></span></span><span><i class="cv" style="--c:#ffffff"></i>Printed edge</span><span><i class="cv dash" style="--c:#5fd4c4"></i>Target</span></div>
         <div class="legend"><span>Gauge, log₁₀ P_fail:</span><span><i class="cv" style="--c:#4cc38a"></i>&lt; −9</span><span><i class="cv" style="--c:#f2a33a"></i>−9 to −6</span><span><i class="cv" style="--c:#ff6b6b"></i>&gt; −6</span><span><i class="cv" style="--c:#9a98ad"></i>not computed</span></div>
       </div>
+      <div class="pane">
+        <div class="pane-head"><h3>Nanoimprint</h3><small>1× template = target</small></div>
+        <div class="canvas-box"><canvas id="nilCanvas" width="512" height="512" aria-label="Nanoimprint result of the same target pattern"></canvas></div>
+        <div class="legend"><span><i class="cv" style="--c:#f0d7a0;background-size:18px 8px"></i>Imprinted opening</span><span><i class="cv" style="--c:#ffffff"></i>Printed edge</span><span><i class="cv dash" style="--c:#5fd4c4"></i>Target</span></div>
+        <div class="legend"><span>Errors:</span><span><i class="cv" style="--c:#ff5a5a;background-size:18px 8px"></i>extra print</span><span><i class="cv" style="--c:#5aaaff;background-size:18px 8px"></i>missing print</span><span>① numbered = listed below</span></div>
+      </div>
     </div>
 
     <div class="metrics" aria-live="polite">
@@ -200,6 +228,29 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
       <div class="metric"><span class="k">Model check</span><span class="v" id="mCheck">–</span><span class="s" id="mChecks">browser vs engine</span></div>
     </div>
     <p class="note" id="editNote">Engine metrics are for the selected mask. If you paint on it, the live pixel count and the image keep updating, but P_fail, PV band and MRC need the Python engine, so they show as not computed.</p>
+  </section>
+
+  <section aria-labelledby="cmp-h">
+    <div class="section-head">
+      <div class="eyebrow">Same pattern, two ways to make it</div>
+      <h2 id="cmp-h">EUV lithography vs. nanoimprint</h2>
+      <p>Nanoimprint (NIL) presses a 1× quartz template into liquid resist and cures it with UV light: a stamp, not a projector. It copies shapes almost exactly, so it needs no mask correction, but a particle trapped under the template stops the pattern forming over a micrometer-scale area. The table compares the pattern above made both ways.</p>
+    </div>
+    <div class="compare-head">
+      <div class="ctl"><label for="d0">NIL defect density <span class="num" id="d0Val">1.0 per cm²</span></label>
+        <input type="range" id="d0" min="-2" max="1" step="0.1" value="0"></div>
+      <button type="button" class="btn" id="particle" aria-pressed="false">Drop a particle under the template</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>EUV lithography</th><th>Nanoimprint</th></tr></thead>
+      <tbody id="cmpBody"></tbody>
+    </table></div>
+    <div class="errs-grid">
+      <div class="errs"><h3>EUV printing errors</h3><ol id="errEuv"></ol></div>
+      <div class="errs"><h3>Nanoimprint errors</h3><ol id="errNil"></ol></div>
+    </div>
+    <p class="read"><b>How to read this:</b> errors are found by comparing each printed shape with the shape it should be. A <b>bridge</b> is two features printed as one, a <b>break</b> one feature printed in pieces, <b>missing</b> a feature that did not print, <b>extra</b> a print where nothing was drawn. Shortened lines, width and size errors are measured on each feature's outline and reported from 2 nm up. Random failures are scaled to a 1 cm² area filled with this pattern; yield is the chance that area has none (Poisson). EUV random failures come from photon shot noise and are computed by the engine for the preset masks only. NIL failures come from particles: each particle wipes out a region about 1 µm across, so it counts as one failure whatever the pattern.</p>
+    <p class="note">The NIL model is illustrative, not calibrated to a tool. It covers 1× copying with about 1 nm of corner rounding, and Poisson particle defects at the density you set. It leaves out resist non-fill, pull-out on separation, residual-layer variation, template wear and overlay. EUV overlay, throughput and mask defects are not simulated either. Drawings you make are sent to EUV without mask correction; the ILT presets show what correction does.</p>
   </section>
 
   <section aria-labelledby="tail-h">
@@ -256,14 +307,18 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   const $ = s => document.querySelector(s);
   const LB = [[1,39112,48831,3,39112,48831,3],[2,31082,39102,0,31082,39100,0],[3,63569,76183,17,63569,76183,17],[4,8844,23986,0,8844,23986,0],[5,28721,53856,0,28721,53856,0],[6,29981,49084,0,29981,49084,0],[7,14813,42364,0,14813,42364,0],[8,10937,21210,0,10938,21209,0],[9,34791,62161,0,34791,62161,0],[10,7558,17393,0,7556,17390,0]];
   const CLIP_NAMES = { ls: "Line / space", t2t: "Tip-to-tip", via: "Vias" };
-  const S = { clip: "t2t", cfg: "stochastic", brush: 1, size: 2, dose: 1, edited: false, mask: null };
+  const S = { clip: "t2t", cfg: "stochastic", brush: 1, size: 2, dose: 1, edited: false, mask: null,
+              tool: "brush", rect: null, d0: 1, particle: false };
+  const CUSTOM = { key: "custom", n: 128, gauges: [], label: "Your own drawing on a 128 × 128 nm tile" };
   let D, models = {}, pending = false, painting = false;
 
   fetch("data.json").then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(init).catch(e => { $("#spec").innerHTML = "<span>Could not load the model data (" + e.message + "). Reload the page to try again.</span>"; });
 
   const bits = s => { const a = new Float64Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) === 49 ? 1 : 0; return a; };
-  const clip = () => D.clips.find(c => c.key === S.clip);
+  const clip = () => S.clip === "custom" ? CUSTOM : D.clips.find(c => c.key === S.clip);
+  // the design intent: the preset's target, or for your own drawing, the drawing itself
+  const targetOf = cl => cl === CUSTOM ? S.mask : (cl._t || (cl._t = bits(cl.target)));
 
   function init(d) {
     D = d;
@@ -281,7 +336,8 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
     $("#mCheck").textContent = err < 1e-4 ? "match" : "drift";
     $("#mCheck").style.color = err < 1e-4 ? "var(--ok)" : "var(--bad)";
     $("#mChecks").textContent = "max |Δ| " + err.toExponential(1) + " at " + d.clips.reduce((a, cl) => a + cl.probes.length, 0) + " pixels";
-    $("#clipSeg").innerHTML = d.clips.map(cl => '<button type="button" data-clip="' + cl.key + '" title="' + cl.label + '">' + CLIP_NAMES[cl.key] + "</button>").join("");
+    $("#clipSeg").innerHTML = d.clips.map(cl => '<button type="button" data-clip="' + cl.key + '" title="' + cl.label + '">' + CLIP_NAMES[cl.key] + "</button>").join("") +
+      '<button type="button" data-clip="custom" title="' + CUSTOM.label + '">Draw your own</button>';
     $("#lbTable tbody").innerHTML = LB.map(r => "<tr><td>" + r[0] + '</td><td class="num">' + r.slice(1, 4).join(" / ") + '</td><td class="num">' + r.slice(4, 7).join(" / ") +
       '</td><td class="num">' + pct(r[4], r[1]) + '</td><td class="num">' + pct(r[5], r[2]) + "</td></tr>").join("");
     chart($("#chartBridge"), d.tails.find(t => t.kind === "bridge"));
@@ -296,14 +352,23 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
     $("#cfgSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.cfg = b.dataset.cfg; load(); } });
     $("#brushSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.brush = +b.dataset.brush; press("#brushSeg", "brush", b.dataset.brush); } });
     $("#size").addEventListener("change", e => { S.size = +e.target.value; });
+    $("#toolSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.tool = b.dataset.tool; press("#toolSeg", "tool", S.tool); } });
     $("#reset").addEventListener("click", load);
+    $("#clear").addEventListener("click", () => { S.mask.fill(0); S.edited = true; schedule(); });
+    $("#showErr").addEventListener("change", schedule);
     $("#dose").addEventListener("input", e => { S.dose = e.target.value / 100; $("#doseVal").textContent = e.target.value + "%"; schedule(); });
+    $("#d0").addEventListener("input", e => { S.d0 = Math.pow(10, +e.target.value); $("#d0Val").textContent = fmtD0(S.d0) + " per cm²"; schedule(); });
+    $("#particle").addEventListener("click", e => {
+      S.particle = !S.particle; e.target.setAttribute("aria-pressed", String(S.particle));
+      e.target.textContent = S.particle ? "Clean the template" : "Drop a particle under the template"; schedule();
+    });
     $("#reticle").addEventListener("change", e => { $("#maskPane").classList.toggle("reticle", e.target.checked); dims(); });
     const cv = $("#maskCanvas");
-    cv.addEventListener("pointerdown", e => { painting = true; cv.setPointerCapture(e.pointerId); paint(e); });
-    cv.addEventListener("pointermove", e => { if (painting) paint(e); });
-    ["pointerup", "pointercancel"].forEach(t => cv.addEventListener(t, () => { painting = false; }));
+    cv.addEventListener("pointerdown", e => { painting = true; cv.setPointerCapture(e.pointerId); paint(e, "down"); });
+    cv.addEventListener("pointermove", e => { if (painting) paint(e, "move"); });
+    ["pointerup", "pointercancel"].forEach(t => cv.addEventListener(t, e => { if (painting && S.rect) paint(e, "up"); painting = false; }));
   }
+  const fmtD0 = v => v < 0.095 ? v.toFixed(2) : v < 9.5 ? v.toFixed(1) : v.toFixed(0);
   function press(sel, key, val) { document.querySelectorAll(sel + " button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset[key] === String(val)))); }
   function dims() {
     const n = clip().n, m = D.card.magnification;
@@ -311,12 +376,37 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   }
 
   function load() {
-    S.mask = bits(clip().masks[S.cfg].bits); S.edited = false;
-    press("#clipSeg", "clip", S.clip); press("#cfgSeg", "cfg", S.cfg); dims(); schedule();
+    const custom = S.clip === "custom";
+    S.mask = custom ? sampleDrawing(CUSTOM.n) : bits(clip().masks[S.cfg].bits); S.edited = false;
+    document.querySelectorAll("#cfgSeg button").forEach(b => { b.disabled = custom; });
+    press("#clipSeg", "clip", S.clip); press("#cfgSeg", "cfg", custom ? "" : S.cfg); dims(); schedule();
   }
-  function paint(e) {
+  // starter drawing (top-left origin, 1 px = 1 nm), sized near the print limit of uncorrected
+  // isolated features here (lines from ~12 nm, vias from ~18 nm) so EUV shows errors without failing outright
+  function sampleDrawing(n) {
+    const m = new Float64Array(n * n), box = (x0, y0, x1, y1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) m[y * n + x] = 1; };
+    box(8, 8, 21, 63); box(8, 50, 55, 63);          // L-shaped line, 14 nm wide
+    box(10, 84, 54, 97); box(67, 84, 114, 97);      // two line ends facing across a 12 nm gap
+    box(66, 10, 83, 27); box(98, 10, 115, 27);      // 18 nm vias, 14 nm apart
+    box(110, 36, 115, 74);                          // 6 nm line, below EUV resolution
+    return m;
+  }
+  function paint(e, phase) {
     const cv = $("#maskCanvas"), r = cv.getBoundingClientRect(), n = clip().n;
-    const x = Math.floor((e.clientX - r.left) / r.width * n), y = Math.floor((e.clientY - r.top) / r.height * n), h = Math.floor(S.size / 2);
+    const x = Math.min(n - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * n)));
+    const y = Math.min(n - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * n)));
+    if (S.tool === "rect") {
+      if (phase === "down") S.rect = { x0: x, y0: y, x1: x, y1: y };
+      else if (S.rect) { S.rect.x1 = x; S.rect.y1 = y; }
+      if (phase === "up" && S.rect) {
+        const { x0, y0, x1, y1 } = S.rect;
+        for (let yy = Math.min(y0, y1); yy <= Math.max(y0, y1); yy++) for (let xx = Math.min(x0, x1); xx <= Math.max(x0, x1); xx++) S.mask[yy * n + xx] = S.brush;
+        S.rect = null; S.edited = true;
+      }
+      schedule();
+      return;
+    }
+    const h = Math.floor(S.size / 2);
     for (let dy = 0; dy < S.size; dy++) for (let dx = 0; dx < S.size; dx++) {
       const yy = ((y - h + dy) % n + n) % n, xx = ((x - h + dx) % n + n) % n;
       if (S.mask[yy * n + xx] !== S.brush) { S.mask[yy * n + xx] = S.brush; S.edited = true; }
@@ -338,12 +428,142 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 
   function render() {
     const cl = clip(), n = cl.n, t0 = performance.now();
-    const lat = models[n].latent(S.mask), thr = D.card.threshold, tgt = bits(cl.target);
+    const lat = models[n].latent(S.mask), thr = D.card.threshold, tgt = targetOf(cl);
     const printed = new Uint8Array(n * n);
-    let wrong = 0;
-    for (let i = 0; i < n * n; i++) { printed[i] = lat[i] * S.dose > thr ? 1 : 0; wrong += printed[i] !== tgt[i]; }
+    for (let i = 0; i < n * n; i++) printed[i] = lat[i] * S.dose > thr ? 1 : 0;
+    const nil = nilPrint(tgt, n), euvE = findErrors(printed, tgt, n), nilE = findErrors(nil, tgt, n);
     $("#timing").textContent = "computed in " + Math.round(performance.now() - t0) + " ms";
-    drawMask(cl, tgt); drawWafer(cl, lat, printed, tgt); metrics(cl, wrong);
+    drawMask(cl, tgt); drawWafer(cl, lat, printed, tgt, euvE); drawNil(n, nil, tgt, nilE);
+    metrics(cl, euvE.wrong); compare(cl, euvE, nilE); errList("#errEuv", euvE); errList("#errNil", nilE);
+  }
+
+  // Nanoimprint: the template is the target at 1x. Resist fill rounds convex corners and fills
+  // concave ones by about 1 nm (one pass of a 3x3 majority vote). A particle under the template
+  // keeps it from touching the resist over a region ~1 um across, far larger than this tile.
+  function nilPrint(t, n) {
+    const out = new Uint8Array(n * n);
+    if (S.particle) return out;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      let s = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += t[((y + dy + n) % n) * n + (x + dx + n) % n];
+      out[y * n + x] = s >= 5 ? 1 : 0;
+    }
+    return out;
+  }
+
+  // 4-connected shapes on the periodic tile (the optics wrap around), with unwrapped bounding boxes
+  function shapes(b, n) {
+    const lab = new Int32Array(n * n).fill(-1), qi = new Int32Array(n * n), qx = new Int32Array(n * n), qy = new Int32Array(n * n), list = [];
+    for (let s = 0; s < n * n; s++) {
+      if (!b[s] || lab[s] >= 0) continue;
+      const id = list.length;
+      let h = 0, t = 1, x0 = s % n, x1 = x0, y0 = (s / n) | 0, y1 = y0, sx = 0, sy = 0;
+      qi[0] = s; qx[0] = x0; qy[0] = y0; lab[s] = id;
+      while (h < t) {
+        const x = qx[h], y = qy[h]; h++;
+        sx += x; sy += y; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy, j = ((ny % n + n) % n) * n + (nx % n + n) % n;
+          if (b[j] && lab[j] < 0) { lab[j] = id; qi[t] = j; qx[t] = nx; qy[t] = ny; t++; }
+        }
+      }
+      list.push({ area: t, w: x1 - x0 + 1, h: y1 - y0 + 1, cx: ((sx / t) % n + n) % n, cy: ((sy / t) % n + n) % n });
+    }
+    return { lab, list };
+  }
+
+  function findErrors(p, t, n) {
+    const T = shapes(t, n), P = shapes(p, n);
+    const tHit = T.list.map(() => new Set()), pHit = P.list.map(() => new Set());
+    let extra = 0, missing = 0;
+    for (let i = 0; i < n * n; i++) {
+      if (t[i] && p[i]) { tHit[T.lab[i]].add(P.lab[i]); pHit[P.lab[i]].add(T.lab[i]); }
+      else if (p[i]) extra++; else if (t[i]) missing++;
+    }
+    const items = [], add = (type, sev, s, text) => items.push({ type, sev, x: s.cx, y: s.cy, text });
+    const span = v => v >= n - 1;
+    T.list.forEach((s, k) => {
+      if (tHit[k].size === 0 && s.area >= 2) add("missing", 5, s, "Feature did not print (drawn " + s.w + " × " + s.h + " nm)");
+      else if (tHit[k].size >= 2) add("break", 4, s, "Feature printed in " + tHit[k].size + " pieces (break)");
+    });
+    P.list.forEach((s, k) => {
+      if (pHit[k].size === 0 && s.area >= 3) add("extra", 3, s, "Unwanted print, " + s.area + " nm², where nothing was drawn");
+      else if (pHit[k].size >= 2) add("bridge", 4.5, s, pHit[k].size + " features merged into one (bridge)");
+    });
+    T.list.forEach((s, k) => {
+      if (tHit[k].size !== 1) return;
+      const pk = tHit[k].values().next().value;
+      if (pHit[pk].size !== 1) return;
+      const q = P.list[pk], long = Math.max(s.w, s.h), short = Math.min(s.w, s.h);
+      if (s.area < 0.85 * s.w * s.h && !span(s.w) && !span(s.h)) {  // not a bar (an L, a T...): judge by area
+        const pct = Math.round(100 * (q.area / s.area - 1));
+        if (Math.abs(pct) >= 10) add("size", 0.5 + Math.abs(pct) / 50, s, "Shape printed " + Math.abs(pct) + "% " + (pct > 0 ? "larger" : "smaller") + ", " + s.area + " → " + q.area + " nm² (rounded corners and ends)");
+      } else if (long >= 1.5 * short) {
+        const horiz = s.w >= s.h, tL = horiz ? s.w : s.h, pL = horiz ? q.w : q.h, tS = horiz ? s.h : s.w, pS = horiz ? q.h : q.w;
+        if (!span(tL) && pL - tL <= -2) add("short", 1 + (tL - pL) / 10, s, "Line " + (tL - pL) + " nm shorter than drawn, " + tL + " → " + pL + " nm (line-end shortening)");
+        if (!span(tL) && pL - tL >= 2) add("short", 1 + (pL - tL) / 10, s, "Line " + (pL - tL) + " nm longer than drawn, " + tL + " → " + pL + " nm");
+        if (Math.abs(pS - tS) >= 2) add("width", 0.5 + Math.abs(pS - tS) / 10, s, "Width " + (pS > tS ? "+" : "−") + Math.abs(pS - tS) + " nm, " + tS + " → " + pS + " nm");
+      } else {
+        const d = Math.round(((q.w - s.w) + (q.h - s.h)) / 2);
+        if (Math.abs(d) >= 2) add("size", 0.5 + Math.abs(d) / 10, s, "Feature " + (d > 0 ? "grew" : "shrank") + " " + Math.abs(d) + " nm, " + s.w + " × " + s.h + " → " + q.w + " × " + q.h + " nm");
+      }
+    });
+    items.sort((a, b) => b.sev - a.sev);
+    return { wrong: extra + missing, extra, missing, items };
+  }
+
+  const ERR_COLOR = { missing: "#ff6b6b", break: "#ff6b6b", bridge: "#ff6b6b", extra: "#f2a33a", short: "#7fd3ff", width: "#7fd3ff", size: "#7fd3ff" };
+  const MAX_MARKS = 8;
+  function overlayErrors(ctx, n, p, t, errs) {
+    if (!$("#showErr").checked) return;
+    const off = document.createElement("canvas"); off.width = off.height = n;
+    const oc = off.getContext("2d"), img = oc.createImageData(n, n);
+    for (let i = 0; i < n * n; i++) {
+      if (p[i] && !t[i]) img.data.set([255, 90, 90, 150], i * 4);
+      else if (!p[i] && t[i]) img.data.set([90, 170, 255, 160], i * 4);
+    }
+    oc.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false; ctx.drawImage(off, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    const s = ctx.canvas.width / n;
+    errs.items.slice(0, MAX_MARKS).forEach((e, k) => {
+      const x = (e.x + 0.5) * s, y = (e.y + 0.5) * s;
+      ctx.fillStyle = ERR_COLOR[e.type]; ctx.beginPath(); ctx.arc(x, y, 10, 0, 7); ctx.fill();
+      ctx.fillStyle = "#14121f"; ctx.font = "600 12px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(k + 1), x, y + 0.5);
+    });
+  }
+  function errList(sel, errs) {
+    const el = $(sel), shown = errs.items.slice(0, MAX_MARKS);
+    el.innerHTML = shown.length ? shown.map((e, k) => '<li><span class="dot" style="background:' + ERR_COLOR[e.type] + '">' + (k + 1) + "</span><span>" + e.text + "</span></li>").join("") +
+      (errs.items.length > MAX_MARKS ? '<li class="note">and ' + (errs.items.length - MAX_MARKS) + " smaller ones</li>" : "")
+      : S.particle && sel === "#errNil" ? '<li class="note">Nothing printed: the particle kept the template off the resist.</li>'
+      : '<li class="note">No printing errors of 2 nm or more.</li>';
+  }
+
+  const sci = v => { if (v === 0) return "0"; const e = Math.floor(Math.log10(v)), m = v / Math.pow(10, e); return (m >= 9.95 ? "1.0" : m.toFixed(1)) + "×10<sup>" + String(m >= 9.95 ? e + 1 : e).replace("-", "−") + "</sup>"; };
+  const yieldPct = l => l > 30 ? "≈ 0%" : l < 1e-4 ? (100 - l * 100).toFixed(4) + "%" : (100 * Math.exp(-l)).toFixed(l < 0.01 ? 3 : 1) + "%";
+  function summary(errs) {
+    const c = {};
+    errs.items.forEach(e => { const k = { short: "length", width: "width", size: "size" }[e.type] || e.type; c[k] = (c[k] || 0) + 1; });
+    const parts = Object.entries(c).map(([k, v]) => v + " " + k + (v > 1 && !["width", "size", "length"].includes(k) ? (k.endsWith("h") ? "es" : "s") : ""));
+    return parts.length ? parts.join(", ") : "none";
+  }
+  function compare(cl, euvE, nilE) {
+    const n = cl.n, copies = 1e14 / (n * n), preset = cl !== CUSTOM && !S.edited;
+    const lp = preset ? cl.masks[S.cfg].log10_pfail : null;
+    const euvLam = lp ? copies * lp.reduce((a, v) => a + Math.pow(10, v), 0) : null;
+    const nilLam = S.d0, nilPf = S.d0 * Math.PI * 1e-8;  // one particle kills a ~1 um radius region
+    const need = "needs the Python engine (preset masks only)";
+    const rows = [
+      ["How the pattern transfers", "EUV light through a mirror lens, shrunk 4× / 8×; diffraction blurs it", "1× quartz template pressed into resist, UV cured"],
+      ["Pixels wrong vs. target", euvE.wrong.toLocaleString("en-US") + " nm²", nilE.wrong.toLocaleString("en-US") + " nm²"],
+      ["Printing errors found", summary(euvE), summary(nilE)],
+      ["Needs mask correction", "Yes: compare the three preset masks", "No: the template is the design"],
+      ["Random failure per feature", lp ? "worst gauge " + sci(Math.pow(10, Math.max(...lp))) + " (photon shot noise)" : need, sci(nilPf) + " (any particle within ~1 µm)"],
+      ["Random failures in 1 cm² of this pattern", euvLam != null ? sci(euvLam) + " (" + sci(copies) + " tile copies)" : need, sci(nilLam) + " (one per particle)"],
+      ["Yield of that 1 cm²", euvLam != null ? yieldPct(euvLam) : "–", yieldPct(nilLam)],
+    ];
+    $("#cmpBody").innerHTML = rows.map(r => "<tr><td><b>" + r[0] + "</b></td><td>" + r[1] + "</td><td>" + r[2] + "</td></tr>").join("");
   }
 
   function pixels(ctx, n, color) {
@@ -368,14 +588,33 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
     cv.height = $("#reticle").checked ? 1024 : 512;
     const ctx = cv.getContext("2d");
     pixels(ctx, n, i => S.mask[i] ? [217, 212, 239] : [43, 39, 64]);
-    outline(ctx, n, tgt, "#5fd4c4", [4, 3]);
+    if (cl !== CUSTOM) outline(ctx, n, tgt, "#5fd4c4", [4, 3]);
+    if (S.rect) {
+      const sx = cv.width / n, sy = cv.height / n, { x0, y0, x1, y1 } = S.rect;
+      ctx.setLineDash([5, 3]); ctx.strokeStyle = S.brush ? "#f2a33a" : "#ff6b6b"; ctx.lineWidth = 2;
+      ctx.strokeRect(Math.min(x0, x1) * sx, Math.min(y0, y1) * sy, (Math.abs(x1 - x0) + 1) * sx, (Math.abs(y1 - y0) + 1) * sy);
+      ctx.setLineDash([]);
+    }
   }
-  function drawWafer(cl, lat, printed, tgt) {
+  function drawNil(n, nil, tgt, errs) {
+    const ctx = $("#nilCanvas").getContext("2d");
+    pixels(ctx, n, i => nil[i] ? [240, 215, 160] : [30, 27, 52]);
+    outline(ctx, n, tgt, "#5fd4c4", [4, 3]);
+    outline(ctx, n, nil, "#ffffff");
+    overlayErrors(ctx, n, nil, tgt, errs);
+    if (S.particle) {
+      ctx.fillStyle = "rgba(20,18,31,0.72)"; ctx.fillRect(0, 0, 512, 512);
+      ctx.fillStyle = "#f0d7a0"; ctx.font = "600 17px ui-sans-serif, system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("Particle under the template:", 256, 236); ctx.fillText("no pattern over ~1 µm around it", 256, 262);
+    }
+  }
+  function drawWafer(cl, lat, printed, tgt, errs) {
     const ctx = $("#waferCanvas").getContext("2d"), n = cl.n;
     pixels(ctx, n, i => cmap(lat[i] * S.dose / 0.6));
     outline(ctx, n, tgt, "#5fd4c4", [4, 3]);
     outline(ctx, n, printed, "#ffffff");
-    const s = 512 / n, lp = S.edited ? null : cl.masks[S.cfg].log10_pfail;
+    overlayErrors(ctx, n, printed, tgt, errs);
+    const s = 512 / n, lp = S.edited || cl === CUSTOM ? null : cl.masks[S.cfg].log10_pfail;
     cl.gauges.forEach((g, k) => {
       const v = lp && lp[k], col = v == null ? "#9a98ad" : v < -9 ? "#4cc38a" : v < -6 ? "#f2a33a" : "#ff6b6b";
       ctx.strokeStyle = ctx.fillStyle = col; ctx.lineWidth = 3;
@@ -384,13 +623,13 @@ footer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
     });
   }
   function metrics(cl, wrong) {
-    const m = cl.masks[S.cfg];
     $("#mL2").textContent = wrong.toLocaleString("en-US");
-    if (S.edited) {
+    if (S.edited || cl === CUSTOM) {
       ["#mP", "#mPVB", "#mMRC"].forEach(id => { $(id).textContent = "–"; $(id).style.color = ""; });
-      $("#mPs").textContent = "not computed for an edited mask";
+      $("#mPs").textContent = cl === CUSTOM ? "not computed for your drawing" : "not computed for an edited mask";
       return;
     }
+    const m = cl.masks[S.cfg];
     const k = m.log10_pfail.indexOf(Math.max(...m.log10_pfail)), v = m.log10_pfail[k];
     $("#mP").innerHTML = "10<sup>" + v.toFixed(1).replace("-", "−") + "</sup>";
     $("#mP").style.color = v < -9 ? "var(--ok)" : v < -6 ? "var(--warn)" : "var(--bad)";
